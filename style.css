@@ -10,7 +10,6 @@ body {
     min-height: 100vh;
 }
 
-/* ========== STYLE PIN PAGE ========== */
 .pin-container {
     display: flex;
     justify-content: center;
@@ -79,13 +78,6 @@ body {
 
 .btn-primary:hover {
     background: #075e54;
-    transform: scale(1.02);
-}
-
-.btn-primary:disabled {
-    background: #95a5a6;
-    cursor: not-allowed;
-    transform: none;
 }
 
 .error-msg {
@@ -107,7 +99,6 @@ body {
     margin-top: 1rem;
 }
 
-/* ========== DASHBOARD STYLES ========== */
 .dashboard {
     background: #f0f2f5;
     min-height: 100vh;
@@ -119,7 +110,6 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
     flex-wrap: wrap;
 }
 
@@ -145,15 +135,8 @@ body {
     border-radius: 2rem;
     cursor: pointer;
     font-weight: bold;
-    transition: all 0.2s;
 }
 
-.btn-logout:hover {
-    background: #c0392b;
-    transform: scale(1.02);
-}
-
-/* Tabs */
 .tabs {
     display: flex;
     gap: 0.5rem;
@@ -170,28 +153,20 @@ body {
     font-size: 1rem;
     cursor: pointer;
     border-radius: 2rem;
-    transition: 0.2s;
     color: #5a6e7a;
 }
 
 .tab-btn.active {
     background: #25D366;
     color: white;
-    box-shadow: 0 2px 8px rgba(37,211,102,0.3);
 }
 
-.tab-btn:hover:not(.active) {
-    background: #e9ecef;
-}
-
-/* Tab Content */
 .tab-content {
     display: none;
     padding: 1.5rem;
     background: white;
     margin: 1rem;
     border-radius: 1rem;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
     min-height: 65vh;
 }
 
@@ -208,14 +183,6 @@ body {
     border-bottom: 2px solid #25D366;
 }
 
-.online-status {
-    font-size: 0.8rem;
-    background: #e8f5e9;
-    padding: 0.2rem 0.8rem;
-    border-radius: 1rem;
-}
-
-/* Chat Room Styles */
 .chat-room {
     display: flex;
     flex-direction: column;
@@ -274,11 +241,6 @@ body {
     border: 1px solid #ddd;
     border-radius: 2rem;
     outline: none;
-    font-size: 0.95rem;
-}
-
-.message-input-area input:focus {
-    border-color: #25D366;
 }
 
 .btn-send {
@@ -288,10 +250,8 @@ body {
     border-radius: 2rem;
     color: white;
     cursor: pointer;
-    font-weight: bold;
 }
 
-/* Notes Styles */
 .notes-list {
     margin-bottom: 1.5rem;
     max-height: 400px;
@@ -308,13 +268,11 @@ body {
 
 .note-title {
     font-weight: bold;
-    font-size: 1rem;
     margin-bottom: 0.3rem;
 }
 
 .note-content {
     color: #555;
-    font-size: 0.9rem;
 }
 
 .note-date {
@@ -332,16 +290,10 @@ body {
     border-top: 1px solid #eee;
 }
 
-.add-note h4, .add-gallery h4 {
-    margin-bottom: 0.5rem;
-    color: #075e54;
-}
-
 .add-note input, .add-note textarea {
     padding: 0.7rem;
     border: 1px solid #ddd;
     border-radius: 0.5rem;
-    outline: none;
 }
 
 .btn-success {
@@ -351,10 +303,8 @@ body {
     padding: 0.7rem;
     border-radius: 0.5rem;
     cursor: pointer;
-    font-weight: bold;
 }
 
-/* Gallery Styles */
 .gallery-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
@@ -367,9 +317,8 @@ body {
 .gallery-item {
     background: #f0f2f5;
     border-radius: 0.8rem;
-    overflow: hidden;
-    text-align: center;
     padding: 0.8rem;
+    text-align: center;
 }
 
 .gallery-item img {
@@ -396,7 +345,6 @@ body {
     padding: 0.7rem;
     border: 1px solid #ddd;
     border-radius: 0.5rem;
-    outline: none;
 }
 
 .loading-spinner {
@@ -411,20 +359,20 @@ body {
     color: #888;
 }
 
-/* Scrollbar */
 ::-webkit-scrollbar {
     width: 6px;
 }
+
 ::-webkit-scrollbar-track {
     background: #e0e0e0;
     border-radius: 10px;
 }
+
 ::-webkit-scrollbar-thumb {
     background: #128C7E;
     border-radius: 10px;
 }
 
-/* Responsive */
 @media (max-width: 640px) {
     .tab-content {
         margin: 0.5rem;
