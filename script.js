@@ -1,6 +1,4 @@
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('✅ Halaman PIN siap!');
-    
     const pinInput = document.getElementById('pinInput');
     const verifyBtn = document.getElementById('verifyBtn');
     const messageBox = document.getElementById('messageBox');
