@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>ChatSphere - Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        body {
+            background: #f0f2f5;
+        }
+        .dashboard-header {
+            background: white;
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .dashboard-header h2 {
+            color: #075e54;
+        }
+        .logout-btn {
+            background: #e74c3c;
+            padding: 0.5rem 1.2rem;
+            border-radius: 2rem;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .tabs {
+            display: flex;
+            gap: 0.5rem;
+            background: white;
+            padding: 0.5rem 1rem;
+            border-bottom: 1px solid #ddd;
+        }
+        .tab-btn {
+            background: transparent;
+            border: none;
+            padding: 0.8rem 1.5rem;
+            font-size: 1rem;
+            cursor: pointer;
+            border-radius: 2rem;
+            transition: 0.2s;
+            color: #5a6e7a;
+        }
+        .tab-btn.active {
+            background: #25D366;
+            color: white;
+            box-shadow: 0 2px 8px rgba(37,211,102,0.3);
+        }
+        .tab-content {
+            display: none;
+            padding: 1.5rem;
+            background: white;
+            margin: 1rem;
+            border-radius: 1rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            min-height: 60vh;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        /* Chat Room Styles */
+        .chat-room {
+            display: flex;
+            flex-direction: column;
+            height: 65vh;
+        }
+        .messages-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem;
+            background: #e5ded8;
+            border-radius: 1rem;
+        }
+        .message {
+            margin-bottom: 1rem;
+            display: flex;
+            flex-direction: column;
+        }
+        .message.sent { align-items: flex-end; }
+        .message.received { align-items: flex-start; }
+        .bubble {
+            max-width: 70%;
+            padding: 0.5rem 1rem;
+            border-radius: 1.2rem;
+            background: white;
+        }
+        .sent .bubble { background: #dcf8c5; }
+        .message-input-area {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+        .message-input-area input {
+            flex: 1;
+            padding: 0.7rem;
+            border: 1px solid #ddd;
+            border-radius: 2rem;
+            outline: none;
+        }
+        .message-input-area button {
+            background: #128C7E;
+            border: none;
+            padding: 0.7rem 1.2rem;
+            border-radius: 2rem;
+            color: white;
+            cursor: pointer;
+        }
+        /* Notes styles */
+        .notes-container {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        .note-item {
+            background: #f9f9f9;
+            padding: 0.8rem;
+            border-radius: 0.8rem;
+            border-left: 4px solid #25D366;
+        }
+        .note-title {
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+        .note-content {
+            color: #555;
+            margin-top: 0.3rem;
+        }
+        .note-date {
+            font-size: 0.7rem;
+            color: #999;
+            margin-top: 0.3rem;
+        }
+        .add-note {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+        .add-note input, .add-note textarea {
+            padding: 0.5rem;
+            border: 1px solid #ddd;
+            border-radius: 0.5rem;
+        }
+        /* Gallery styles */
+        .gallery-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 1rem;
+        }
+        .gallery-item {
+            background: #f0f2f5;
+            border-radius: 0.8rem;
+            overflow: hidden;
+            text-align: center;
+            padding: 1rem;
+        }
+        .gallery-item img {
+            width: 100%;
+            height: 120px;
+            object-fit: cover;
+            border-radius: 0.5rem;
+        }
+        .gallery-url-input {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+        .gallery-url-input input {
+            flex: 1;
+            padding: 0.5rem;
+            border: 1px solid #ddd;
+            border-radius: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard-header">
+        <h2>💬 ChatSphere</h2>
+        <button class="logout-btn" id="logoutBtn">🚪 Logout</button>
+    </div>
+
+    <div class="tabs">
+        <button class="tab-btn active" data-tab="notes">📝 Catatan</button>
+        <button class="tab-btn" data-tab="chat">💬 ChatRoom</button>
+        <button class="tab-btn" data-tab="gallery">🖼️ Gallery</button>
+    </div>
+
+    <div id="notes" class="tab-content active">
+        <div class="notes-container">
+            <div id="notesList">Loading...</div>
+            <div class="add-note">
+                <input type="text" id="noteTitle" placeholder="Judul Catatan">
+                <textarea id="noteContent" rows="3" placeholder="Isi catatan..."></textarea>
+                <button id="addNoteBtn">+ Tambah Catatan</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="chat" class="tab-content">
+        <div class="chat-room">
+            <div class="messages-area" id="messagesArea">
+                <div style="text-align:center;color:#888;">Loading pesan...</div>
+            </div>
+            <div class="message-input-area">
+                <input type="text" id="chatInput" placeholder="Ketik pesan...">
+                <button id="sendChatBtn">Kirim</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="gallery" class="tab-content">
+        <div class="gallery-container">
+            <div id="galleryGrid" class="gallery-grid">Loading gambar...</div>
+            <div class="gallery-url-input">
+                <input type="text" id="imageUrl" placeholder="Masukkan URL gambar">
+                <button id="addImageBtn">Tambah ke Gallery</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="script.js"></script>
+    <script>
+        // Proteksi halaman: cek autentikasi
+        if (!sessionStorage.getItem('isAuthenticated')) {
+            window.location.href = 'index.html';
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // Tab switching
+            const tabs = document.querySelectorAll('.tab-btn');
+            const contents = document.querySelectorAll('.tab-content');
+            
+            tabs.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const tabId = btn.dataset.tab;
+                    tabs.forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    contents.forEach(c => c.classList.remove('active'));
+                    document.getElementById(tabId).classList.add('active');
+                    
+                    // Refresh data saat tab dibuka
+                    if (tabId === 'notes') loadNotes();
+                    if (tabId === 'chat') loadMessages();
+                    if (tabId === 'gallery') loadGallery();
+                });
+            });
+            
+            // Logout
+            document.getElementById('logoutBtn').addEventListener('click', () => {
+                sessionStorage.removeItem('isAuthenticated');
+                window.location.href = 'index.html';
+            });
+            
+            // Load initial data
+            loadNotes();
+            loadMessages();
+            loadGallery();
+            
+            // Setup realtime untuk chat (melalui polling ringan atau subscribe)
+            window.setupRealtimeSubscription();
+            
+            // Event listeners
+            document.getElementById('addNoteBtn').addEventListener('click', addNote);
+            document.getElementById('sendChatBtn').addEventListener('click', sendChatMessage);
+            document.getElementById('chatInput').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') sendChatMessage();
+            });
+            document.getElementById('addImageBtn').addEventListener('click', addGalleryImage);
+        });
+    </script>
+</body>
+</html>
