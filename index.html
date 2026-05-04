@@ -2,283 +2,30 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>ChatSphere - Verifikasi PIN</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-        body {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            background: linear-gradient(135deg, #075e54, #128C7E);
-        }
-        .pin-container {
-            background: white;
-            padding: 2rem;
-            border-radius: 2rem;
-            box-shadow: 0 20px 35px rgba(0,0,0,0.2);
-            width: 90%;
-            max-width: 400px;
-            text-align: center;
-        }
-        .pin-container h1 {
-            color: #075e54;
-            margin-bottom: 1rem;
-        }
-        .pin-input-group {
-            margin: 1.5rem 0;
-        }
-        #pinInput {
-            width: 100%;
-            padding: 1rem;
-            font-size: 1.5rem;
-            text-align: center;
-            letter-spacing: 8px;
-            border: 2px solid #ddd;
-            border-radius: 1rem;
-            outline: none;
-            font-family: monospace;
-        }
-        #pinInput:focus {
-            border-color: #25D366;
-        }
-        button {
-            background: #128C7E;
-            color: white;
-            border: none;
-            padding: 0.8rem 1.5rem;
-            border-radius: 2rem;
-            font-size: 1rem;
-            cursor: pointer;
-            width: 100%;
-            font-weight: bold;
-        }
-        button:hover {
-            background: #075e54;
-        }
-        button:disabled {
-            background: #95a5a6;
-            cursor: not-allowed;
-        }
-        .error-msg {
-            color: #e74c3c;
-            margin-top: 1rem;
-            font-size: 0.9rem;
-            display: none;
-        }
-        .info {
-            font-size: 0.8rem;
-            color: #7f8c8d;
-            margin-top: 1rem;
-        }
-        .loading {
-            display: inline-block;
-            width: 16px;
-            height: 16px;
-            border: 2px solid #fff;
-            border-radius: 50%;
-            border-top-color: transparent;
-            animation: spin 0.6s linear infinite;
-            margin-right: 8px;
-        }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-        .debug-console {
-            margin-top: 1rem;
-            padding: 0.5rem;
-            background: #2c3e50;
-            color: #2ecc71;
-            font-size: 0.7rem;
-            border-radius: 0.5rem;
-            text-align: left;
-            max-height: 150px;
-            overflow-y: auto;
-            display: none;
-            font-family: monospace;
-        }
-    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatSphere - Login PIN</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="pin-container">
-        <h1>🔐 ChatSphere</h1>
-        <p>Masukkan PIN untuk mengakses dashboard</p>
-        <div class="pin-input-group">
-            <input type="password" id="pinInput" maxlength="6" placeholder="******" inputmode="numeric">
+        <div class="pin-card">
+            <div class="pin-icon">🔐</div>
+            <h1>ChatSphere</h1>
+            <p>Masukkan PIN untuk mengakses dashboard</p>
+            
+            <div class="pin-input-group">
+                <input type="password" id="pinInput" maxlength="6" placeholder="******" inputmode="numeric" autofocus>
+            </div>
+            
+            <button id="verifyBtn" class="btn-primary">Verifikasi & Masuk</button>
+            
+            <div id="errorMsg" class="error-msg"></div>
+            <div class="info-text">PIN default: <strong>123456</strong></div>
+            <div id="statusMsg" class="status-msg"></div>
         </div>
-        <button id="verifyBtn">Verifikasi & Masuk</button>
-        <div class="error-msg" id="errorMsg">PIN salah! Silakan coba lagi.</div>
-        <div class="info">PIN default: 123456 (jika belum diubah)</div>
-        <button id="showDebugBtn" style="background:#34495e; margin-top:0.5rem; font-size:0.7rem;">🐛 Show Debug</button>
-        <div class="debug-console" id="debugConsole"></div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script>
-        // ==================== KONFIGURASI SUPABASE ====================
-        const SUPABASE_URL = 'https://cxlvnwbfdbymdoddjqwn.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN4bHZud2JmZGJ5bWRvZGRqcXduIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5MDUwOTMsImV4cCI6MjA5MzQ4MTA5M30.9jGx6eY7qzvQzW65xD7gVOMP1YZQzKjULginFNwSV-k';
-        
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        
-        // Debug logger
-        function debugLog(message, isError = false) {
-            const debugConsole = document.getElementById('debugConsole');
-            if (debugConsole) {
-                const logEntry = document.createElement('div');
-                logEntry.style.color = isError ? '#e74c3c' : '#2ecc71';
-                logEntry.style.borderBottom = '1px solid #444';
-                logEntry.style.padding = '2px 0';
-                logEntry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
-                debugConsole.appendChild(logEntry);
-                debugConsole.scrollTop = debugConsole.scrollHeight;
-            }
-            console.log(message);
-        }
-        
-        // Fungsi verifikasi PIN dengan debugging
-        async function verifyPin(pin) {
-            debugLog(`🔍 Verifikasi PIN: ${pin}...`);
-            
-            try {
-                // Coba cek koneksi Supabase dulu
-                debugLog(`📡 Testing koneksi ke Supabase...`);
-                const { data: testData, error: testError } = await supabase
-                    .from('app_config')
-                    .select('count');
-                
-                if (testError) {
-                    debugLog(`⚠️ Tabel app_config belum ada: ${testError.message}`, true);
-                    debugLog(`💡 Menggunakan PIN default: 123456`);
-                    return pin === '123456';
-                }
-                
-                debugLog(`✅ Koneksi Supabase berhasil!`);
-                
-                // Ambil PIN dari database
-                const { data, error } = await supabase
-                    .from('app_config')
-                    .select('value')
-                    .eq('key', 'access_pin')
-                    .single();
-                
-                if (error) {
-                    debugLog(`⚠️ Gagal mengambil PIN: ${error.message}`, true);
-                    debugLog(`💡 Menggunakan PIN default: 123456`);
-                    return pin === '123456';
-                }
-                
-                if (!data) {
-                    debugLog(`⚠️ Data PIN tidak ditemukan, menggunakan default`, true);
-                    return pin === '123456';
-                }
-                
-                debugLog(`✅ PIN dari database: ${data.value}`);
-                const isValid = data.value === pin;
-                debugLog(isValid ? '✅ PIN BENAR!' : '❌ PIN SALAH!');
-                return isValid;
-                
-            } catch (err) {
-                debugLog(`❌ Error: ${err.message}`, true);
-                debugLog(`💡 Fallback ke PIN default: 123456`);
-                return pin === '123456';
-            }
-        }
-        
-        // Fungsi untuk membuat tabel jika belum ada (opsional)
-        async function setupTables() {
-            debugLog(`🛠️ Mengecek dan membuat tabel jika perlu...`);
-            // Catatan: Membuat tabel via API memerlukan service_role key
-            // Jadi kita hanya cek koneksi saja
-            debugLog(`✅ Setup selesai - gunakan SQL Editor di Supabase untuk membuat tabel`);
-        }
-        
-        // Event handler saat halaman dimuat
-        document.addEventListener('DOMContentLoaded', async () => {
-            const pinInput = document.getElementById('pinInput');
-            const verifyBtn = document.getElementById('verifyBtn');
-            const errorMsg = document.getElementById('errorMsg');
-            const showDebugBtn = document.getElementById('showDebugBtn');
-            const debugConsole = document.getElementById('debugConsole');
-            
-            // Toggle debug console
-            showDebugBtn.addEventListener('click', () => {
-                if (debugConsole.style.display === 'none' || !debugConsole.style.display) {
-                    debugConsole.style.display = 'block';
-                    showDebugBtn.textContent = '🐛 Hide Debug';
-                } else {
-                    debugConsole.style.display = 'none';
-                    showDebugBtn.textContent = '🐛 Show Debug';
-                }
-            });
-            
-            debugLog('🚀 Aplikasi dimulai');
-            debugLog(`📡 Supabase URL: ${SUPABASE_URL}`);
-            
-            // Test koneksi Supabase
-            try {
-                debugLog('🔄 Test koneksi Supabase...');
-                const { data, error } = await supabase.from('app_config').select('*').limit(1);
-                if (error) {
-                    debugLog(`⚠️ Koneksi bermasalah: ${error.message}`, true);
-                    debugLog('💡 Pastikan tabel "app_config" sudah dibuat di Supabase', true);
-                } else {
-                    debugLog('✅ Koneksi Supabase berhasil!');
-                }
-            } catch (err) {
-                debugLog(`❌ Error koneksi: ${err.message}`, true);
-            }
-            
-            async function handleVerify() {
-                const pin = pinInput.value.trim();
-                if (!pin) {
-                    errorMsg.textContent = 'PIN tidak boleh kosong!';
-                    errorMsg.style.display = 'block';
-                    return;
-                }
-                
-                // Disable button sambil proses
-                verifyBtn.disabled = true;
-                verifyBtn.innerHTML = '<span class="loading"></span> Memverifikasi...';
-                errorMsg.style.display = 'none';
-                
-                try {
-                    const isValid = await verifyPin(pin);
-                    
-                    if (isValid) {
-                        debugLog('✅ Verifikasi sukses! Redirecting...');
-                        sessionStorage.setItem('isAuthenticated', 'true');
-                        window.location.href = 'dashboard.html';
-                    } else {
-                        debugLog('❌ Verifikasi gagal!', true);
-                        errorMsg.style.display = 'block';
-                        pinInput.value = '';
-                        pinInput.focus();
-                    }
-                } catch (err) {
-                    debugLog(`❌ Error saat verifikasi: ${err.message}`, true);
-                    errorMsg.textContent = 'Error: ' + err.message;
-                    errorMsg.style.display = 'block';
-                } finally {
-                    verifyBtn.disabled = false;
-                    verifyBtn.innerHTML = 'Verifikasi & Masuk';
-                }
-            }
-            
-            verifyBtn.addEventListener('click', handleVerify);
-            pinInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') handleVerify();
-            });
-            
-            // Auto-focus
-            pinInput.focus();
-        });
-    </script>
+    <script src="script.js"></script>
 </body>
 </html>
