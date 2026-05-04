@@ -21,42 +21,43 @@
 
         <!-- Tab Notes -->
         <div id="notes" class="tab-content active">
-            <div class="section-title">📝 Catatan Saya</div>
+            <h3>📝 Catatan Saya</h3>
             <div id="notesList" class="notes-list">
-                <div class="empty-state">Belum ada catatan</div>
+                <div class="empty-state">Memuat catatan...</div>
             </div>
             <div class="add-section">
                 <input type="text" id="noteTitle" placeholder="Judul catatan">
                 <textarea id="noteContent" rows="2" placeholder="Isi catatan..."></textarea>
-                <button id="addNoteBtn" class="btn-success">+ Tambah</button>
+                <button id="addNoteBtn" class="btn-success">+ Tambah Catatan</button>
             </div>
         </div>
 
         <!-- Tab Chat -->
         <div id="chat" class="tab-content">
-            <div class="section-title">💬 Ruang Chat</div>
+            <h3>💬 Ruang Chat Publik</h3>
             <div id="messagesArea" class="messages-area">
-                <div class="empty-state">Belum ada pesan</div>
+                <div class="empty-state">Memuat pesan...</div>
             </div>
             <div class="input-group">
                 <input type="text" id="chatInput" placeholder="Ketik pesan...">
-                <button id="sendChatBtn" class="btn-primary">Kirim</button>
+                <button id="sendChatBtn" class="btn-primary">Kirim Pesan</button>
             </div>
         </div>
 
         <!-- Tab Gallery -->
         <div id="gallery" class="tab-content">
-            <div class="section-title">🖼️ Gallery</div>
+            <h3>🖼️ Gallery Gambar</h3>
             <div id="galleryGrid" class="gallery-grid">
-                <div class="empty-state">Belum ada gambar</div>
+                <div class="empty-state">Memuat gallery...</div>
             </div>
             <div class="add-section">
-                <input type="text" id="imageUrl" placeholder="URL gambar">
-                <button id="addImageBtn" class="btn-success">+ Tambah</button>
+                <input type="text" id="imageUrl" placeholder="URL gambar (https://...)">
+                <button id="addImageBtn" class="btn-success">+ Tambah Gambar</button>
             </div>
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="dashboard.js"></script>
 </body>
 </html>
