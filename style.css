@@ -159,7 +159,7 @@ body {
 
 /* Notes */
 .notes-list {
-    max-height: 300px;
+    max-height: 350px;
     overflow-y: auto;
     margin-bottom: 20px;
 }
@@ -172,20 +172,57 @@ body {
     margin-bottom: 10px;
 }
 
+.note-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
 .note-title {
     font-weight: bold;
-    margin-bottom: 5px;
+    font-size: 16px;
+}
+
+.note-actions {
+    display: flex;
+    gap: 5px;
+}
+
+.btn-edit, .btn-rename, .btn-delete {
+    padding: 4px 8px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 11px;
+}
+
+.btn-edit {
+    background: #3498db;
+    color: white;
+}
+
+.btn-rename {
+    background: #f39c12;
+    color: white;
+}
+
+.btn-delete {
+    background: #e74c3c;
+    color: white;
 }
 
 .note-content {
     color: #555;
     font-size: 14px;
+    margin-bottom: 5px;
 }
 
 .note-date {
     font-size: 11px;
     color: #999;
-    margin-top: 5px;
 }
 
 /* Chat */
@@ -266,6 +303,17 @@ body {
     border-radius: 8px;
 }
 
+.btn-delete-gallery {
+    margin-top: 8px;
+    padding: 4px 8px;
+    background: #e74c3c;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 11px;
+}
+
 /* Add Section */
 .add-section {
     display: flex;
@@ -303,68 +351,16 @@ body {
     padding: 20px;
     color: #888;
 }
-/* Note Item Header with Actions */
-.note-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-bottom: 8px;
-}
 
-.note-actions {
-    display: flex;
-    gap: 5px;
+/* Scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
 }
-
-.btn-edit, .btn-rename, .btn-delete {
-    padding: 4px 8px;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    font-size: 11px;
-    transition: all 0.2s;
+::-webkit-scrollbar-track {
+    background: #e0e0e0;
+    border-radius: 10px;
 }
-
-.btn-edit {
-    background: #3498db;
-    color: white;
-}
-
-.btn-edit:hover {
-    background: #2980b9;
-}
-
-.btn-rename {
-    background: #f39c12;
-    color: white;
-}
-
-.btn-rename:hover {
-    background: #e67e22;
-}
-
-.btn-delete {
-    background: #e74c3c;
-    color: white;
-}
-
-.btn-delete:hover {
-    background: #c0392b;
-}
-
-.btn-delete-gallery {
-    margin-top: 8px;
-    padding: 4px 8px;
-    background: #e74c3c;
-    color: white;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    font-size: 11px;
-}
-
-.btn-delete-gallery:hover {
-    background: #c0392b;
+::-webkit-scrollbar-thumb {
+    background: #128C7E;
+    border-radius: 10px;
 }
