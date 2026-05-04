@@ -3,17 +3,22 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYm
 
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// CEK AUTENTIKASI
+console.log('Dashboard loaded, checking auth...');
 if (!sessionStorage.getItem('isAuthenticated')) {
-    alert('Silakan login terlebih dahulu!');
+    alert('Silakan login terlebih dahulu! PIN: 123456');
     window.location.href = 'index.html';
 }
 
+// USER ID
 let currentUserId = sessionStorage.getItem('userId');
 if (!currentUserId) {
     currentUserId = 'user_' + Math.random().toString(36).substr(2, 8);
     sessionStorage.setItem('userId', currentUserId);
 }
+console.log('User ID:', currentUserId);
 
+// ==================== FUNGSI CATATAN ====================
 async function loadNotes() {
     const notesList = document.getElementById('notesList');
     if (!notesList) return;
@@ -26,7 +31,11 @@ async function loadNotes() {
             .select('*')
             .order('created_at', { ascending: false });
         
-        if (error) throw error;
+        if (error) {
+            console.error('Notes error:', error);
+            notesList.innerHTML = '<div class="empty-state">⚠️ Tabel notes belum dibuat. Jalankan SQL di Supabase!</div>';
+            return;
+        }
         
         if (!data || data.length === 0) {
             notesList.innerHTML = '<div class="empty-state">📭 Belum ada catatan</div>';
@@ -42,6 +51,7 @@ async function loadNotes() {
         `).join('');
     } catch (err) {
         notesList.innerHTML = `<div class="empty-state">❌ Error: ${err.message}</div>`;
+        console.error(err);
     }
 }
 
@@ -77,6 +87,7 @@ async function addNote() {
     }
 }
 
+// ==================== FUNGSI CHAT ====================
 async function loadMessages() {
     const messagesArea = document.getElementById('messagesArea');
     if (!messagesArea) return;
@@ -89,10 +100,13 @@ async function loadMessages() {
             .select('*')
             .order('created_at', { ascending: true });
         
-        if (error) throw error;
+        if (error) {
+            messagesArea.innerHTML = '<div class="empty-state">⚠️ Tabel chat_messages belum dibuat</div>';
+            return;
+        }
         
         if (!data || data.length === 0) {
-            messagesArea.innerHTML = '<div class="empty-state">💬 Belum ada pesan</div>';
+            messagesArea.innerHTML = '<div class="empty-state">💬 Belum ada pesan. Mulai chatting!</div>';
             return;
         }
         
@@ -109,6 +123,7 @@ async function loadMessages() {
         messagesArea.scrollTop = messagesArea.scrollHeight;
     } catch (err) {
         messagesArea.innerHTML = `<div class="empty-state">❌ Error: ${err.message}</div>`;
+        console.error(err);
     }
 }
 
@@ -147,6 +162,7 @@ async function sendChatMessage() {
     }
 }
 
+// ==================== FUNGSI GALLERY ====================
 async function loadGallery() {
     const galleryGrid = document.getElementById('galleryGrid');
     if (!galleryGrid) return;
@@ -159,7 +175,10 @@ async function loadGallery() {
             .select('*')
             .order('created_at', { ascending: false });
         
-        if (error) throw error;
+        if (error) {
+            galleryGrid.innerHTML = '<div class="empty-state">⚠️ Tabel gallery belum dibuat</div>';
+            return;
+        }
         
         if (!data || data.length === 0) {
             galleryGrid.innerHTML = '<div class="empty-state">🖼️ Belum ada gambar</div>';
@@ -175,6 +194,7 @@ async function loadGallery() {
         `).join('');
     } catch (err) {
         galleryGrid.innerHTML = `<div class="empty-state">❌ Error: ${err.message}</div>`;
+        console.error(err);
     }
 }
 
@@ -208,6 +228,7 @@ async function addGalleryImage() {
     }
 }
 
+// ==================== REALTIME ====================
 function setupRealtime() {
     supabase
         .channel('chat_messages_channel')
@@ -223,6 +244,7 @@ function setupRealtime() {
         .subscribe();
 }
 
+// ==================== TAB SWITCHING ====================
 function setupTabs() {
     const tabs = document.querySelectorAll('.tab-btn');
     const contents = document.querySelectorAll('.tab-content');
@@ -242,17 +264,20 @@ function setupTabs() {
     });
 }
 
+// ==================== HELPER ====================
 function escapeHtml(str) {
     if (!str) return '';
-    return str.replace(/[&<>]/g, function(m) {
-        if (m === '&') return '&amp;';
-        if (m === '<') return '&lt;';
-        if (m === '>') return '&gt;';
-        return m;
-    });
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
+// ==================== INIT ====================
 document.addEventListener('DOMContentLoaded', () => {
+    console.log('✅ Dashboard siap!');
     setupTabs();
     setupRealtime();
     loadNotes();
