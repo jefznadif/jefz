@@ -10,13 +10,49 @@ if (!sessionStorage.getItem('isAuthenticated')) {
     window.location.href = 'index.html';
 }
 
-console.log('✅ Dashboard dimulai!');
-
 // ==================== USER ID ====================
 let currentUserId = sessionStorage.getItem('userId');
 if (!currentUserId) {
     currentUserId = 'user_' + Math.random().toString(36).substr(2, 8);
     sessionStorage.setItem('userId', currentUserId);
+}
+
+// ==================== FUNGSI MEMBUAT TABEL OTOMATIS ====================
+async function createTablesIfNotExist() {
+    console.log('🔧 Mengecek tabel di Supabase...');
+    
+    // Coba buat tabel notes
+    try {
+        const { error } = await supabase.from('notes').select('count');
+        if (error && error.message.includes('relation')) {
+            console.log('📝 Membuat tabel notes...');
+            await supabase.rpc('create_notes_table');
+        }
+    } catch (e) {
+        console.log('Tabel notes sudah ada atau error:', e.message);
+    }
+    
+    // Coba buat tabel chat_messages
+    try {
+        const { error } = await supabase.from('chat_messages').select('count');
+        if (error && error.message.includes('relation')) {
+            console.log('💬 Membuat tabel chat_messages...');
+            await supabase.rpc('create_chat_table');
+        }
+    } catch (e) {
+        console.log('Tabel chat_messages sudah ada');
+    }
+    
+    // Coba buat tabel gallery
+    try {
+        const { error } = await supabase.from('gallery').select('count');
+        if (error && error.message.includes('relation')) {
+            console.log('🖼️ Membuat tabel gallery...');
+            await supabase.rpc('create_gallery_table');
+        }
+    } catch (e) {
+        console.log('Tabel gallery sudah ada');
+    }
 }
 
 // ==================== FUNGSI CATATAN ====================
@@ -58,7 +94,7 @@ async function loadNotes() {
             notesList.appendChild(noteDiv);
         }
         
-        // Tambahkan event listener untuk tombol edit
+        // Event listener untuk tombol edit
         document.querySelectorAll('.btn-edit').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -90,7 +126,7 @@ async function loadNotes() {
         
     } catch (err) {
         console.error('Error:', err);
-        notesList.innerHTML = `<div class="empty-state">❌ Error: ${err.message}</div>`;
+        notesList.innerHTML = `<div class="empty-state">❌ Error: ${err.message}<br><br>📌 Pastikan tabel "notes" sudah dibuat di Supabase!</div>`;
     }
 }
 
@@ -148,8 +184,7 @@ async function editNote(id, oldTitle, oldContent) {
             .from('notes')
             .update({ 
                 title: newTitle.trim(), 
-                content: newContent.trim(),
-                updated_at: new Date().toISOString()
+                content: newContent.trim()
             })
             .eq('id', id);
         
@@ -174,10 +209,7 @@ async function renameNote(id, oldTitle) {
     try {
         const { error } = await supabase
             .from('notes')
-            .update({ 
-                title: newTitle.trim(),
-                updated_at: new Date().toISOString()
-            })
+            .update({ title: newTitle.trim() })
             .eq('id', id);
         
         if (error) throw error;
@@ -240,7 +272,7 @@ async function loadMessages() {
         }
         messagesArea.scrollTop = messagesArea.scrollHeight;
     } catch (err) {
-        messagesArea.innerHTML = `<div class="empty-state">❌ Error: ${err.message}</div>`;
+        messagesArea.innerHTML = `<div class="empty-state">❌ Error: ${err.message}<br><br>📌 Pastikan tabel "chat_messages" sudah dibuat di Supabase!</div>`;
     }
 }
 
@@ -312,7 +344,6 @@ async function loadGallery() {
             galleryGrid.appendChild(imgDiv);
         }
         
-        // Event listener untuk hapus gambar
         document.querySelectorAll('.btn-delete-gallery').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -321,7 +352,7 @@ async function loadGallery() {
             });
         });
     } catch (err) {
-        galleryGrid.innerHTML = `<div class="empty-state">❌ Error: ${err.message}</div>`;
+        galleryGrid.innerHTML = `<div class="empty-state">❌ Error: ${err.message}<br><br>📌 Pastikan tabel "gallery" sudah dibuat di Supabase!</div>`;
     }
 }
 
@@ -388,20 +419,6 @@ function setupRealtime() {
                 const activeTab = document.querySelector('.tab-btn.active');
                 if (activeTab && activeTab.dataset.tab === 'chat') {
                     loadMessages();
-                }
-            }
-        )
-        .subscribe();
-    
-    // Realtime untuk notes (update ketika ada perubahan dari pengguna lain)
-    supabase
-        .channel('notes_realtime')
-        .on('postgres_changes', 
-            { event: '*', schema: 'public', table: 'notes' }, 
-            () => {
-                const activeTab = document.querySelector('.tab-btn.active');
-                if (activeTab && activeTab.dataset.tab === 'notes') {
-                    loadNotes();
                 }
             }
         )
