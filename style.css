@@ -303,3 +303,68 @@ body {
     padding: 20px;
     color: #888;
 }
+/* Note Item Header with Actions */
+.note-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.note-actions {
+    display: flex;
+    gap: 5px;
+}
+
+.btn-edit, .btn-rename, .btn-delete {
+    padding: 4px 8px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 11px;
+    transition: all 0.2s;
+}
+
+.btn-edit {
+    background: #3498db;
+    color: white;
+}
+
+.btn-edit:hover {
+    background: #2980b9;
+}
+
+.btn-rename {
+    background: #f39c12;
+    color: white;
+}
+
+.btn-rename:hover {
+    background: #e67e22;
+}
+
+.btn-delete {
+    background: #e74c3c;
+    color: white;
+}
+
+.btn-delete:hover {
+    background: #c0392b;
+}
+
+.btn-delete-gallery {
+    margin-top: 8px;
+    padding: 4px 8px;
+    background: #e74c3c;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 11px;
+}
+
+.btn-delete-gallery:hover {
+    background: #c0392b;
+}
