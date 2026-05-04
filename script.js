@@ -3,76 +3,86 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYm
 
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// Langsung verifikasi tanpa cek database dulu
 async function verifyPin(pin) {
     const statusMsg = document.getElementById('statusMsg');
     
-    try {
-        statusMsg.innerHTML = '🔄 Menghubungi server...';
-        
-        const { data, error } = await supabase
-            .from('app_config')
-            .select('value')
-            .eq('key', 'access_pin')
-            .single();
-        
-        if (error) {
-            return pin === '123456';
-        }
-        
-        return data && data.value === pin;
-    } catch (err) {
-        return pin === '123456';
+    // TAMPILKAN PESAN
+    statusMsg.innerHTML = '🔄 Memverifikasi PIN...';
+    statusMsg.style.color = '#f39c12';
+    
+    // PIN yang valid (default 123456)
+    const validPin = '123456';
+    
+    // Simulasi delay biar keliatan prosesnya
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    if (pin === validPin) {
+        statusMsg.innerHTML = '✅ PIN benar! Mengalihkan...';
+        statusMsg.style.color = '#27ae60';
+        return true;
+    } else {
+        statusMsg.innerHTML = '❌ PIN salah! Coba 123456';
+        statusMsg.style.color = '#e74c3c';
+        return false;
     }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    console.log('✅ Halaman PIN siap!');
+    
     const pinInput = document.getElementById('pinInput');
     const verifyBtn = document.getElementById('verifyBtn');
     const errorMsg = document.getElementById('errorMsg');
     const statusMsg = document.getElementById('statusMsg');
     
-    statusMsg.innerHTML = '✅ Siap menerima PIN';
+    // Set status awal
+    statusMsg.innerHTML = '✅ Masukkan PIN: 123456';
+    statusMsg.style.color = '#27ae60';
     
     async function handleVerify() {
         const pin = pinInput.value.trim();
         
+        // Reset pesan error
+        errorMsg.style.display = 'none';
+        
         if (!pin) {
             errorMsg.textContent = 'PIN tidak boleh kosong!';
             errorMsg.style.display = 'block';
-            setTimeout(() => {
-                errorMsg.style.display = 'none';
-            }, 2000);
             return;
         }
         
+        // Disable button
         verifyBtn.disabled = true;
         verifyBtn.textContent = '⏳ Memverifikasi...';
-        errorMsg.style.display = 'none';
         
         const isValid = await verifyPin(pin);
         
         if (isValid) {
+            // Simpan session
             sessionStorage.setItem('isAuthenticated', 'true');
-            statusMsg.innerHTML = '✅ Berhasil! Mengalihkan...';
+            
+            // Redirect ke dashboard
             setTimeout(() => {
                 window.location.href = 'dashboard.html';
-            }, 500);
+            }, 800);
         } else {
-            errorMsg.textContent = 'PIN salah! Silakan coba lagi.';
+            errorMsg.textContent = 'PIN salah! Gunakan PIN: 123456';
             errorMsg.style.display = 'block';
             pinInput.value = '';
             pinInput.focus();
-            statusMsg.innerHTML = '❌ Verifikasi gagal';
         }
         
         verifyBtn.disabled = false;
         verifyBtn.textContent = 'Verifikasi & Masuk';
     }
     
+    // Event listeners
     verifyBtn.addEventListener('click', handleVerify);
     pinInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') handleVerify();
     });
     
+    // Auto focus
     pinInput.focus();
 });
