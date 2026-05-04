@@ -4,6 +4,8 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYm
 
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+console.log('🚀 Dashboard.js dimuat!');
+
 // ==================== CEK LOGIN ====================
 if (!sessionStorage.getItem('isAuthenticated')) {
     alert('Silakan login terlebih dahulu! PIN: 123456');
@@ -16,48 +18,17 @@ if (!currentUserId) {
     currentUserId = 'user_' + Math.random().toString(36).substr(2, 8);
     sessionStorage.setItem('userId', currentUserId);
 }
-
-// ==================== FUNGSI MEMBUAT TABEL OTOMATIS ====================
-async function createTablesIfNotExist() {
-    console.log('🔧 Mengecek tabel di Supabase...');
-    
-    // Coba buat tabel notes
-    try {
-        const { error } = await supabase.from('notes').select('count');
-        if (error && error.message.includes('relation')) {
-            console.log('📝 Membuat tabel notes...');
-            await supabase.rpc('create_notes_table');
-        }
-    } catch (e) {
-        console.log('Tabel notes sudah ada atau error:', e.message);
-    }
-    
-    // Coba buat tabel chat_messages
-    try {
-        const { error } = await supabase.from('chat_messages').select('count');
-        if (error && error.message.includes('relation')) {
-            console.log('💬 Membuat tabel chat_messages...');
-            await supabase.rpc('create_chat_table');
-        }
-    } catch (e) {
-        console.log('Tabel chat_messages sudah ada');
-    }
-    
-    // Coba buat tabel gallery
-    try {
-        const { error } = await supabase.from('gallery').select('count');
-        if (error && error.message.includes('relation')) {
-            console.log('🖼️ Membuat tabel gallery...');
-            await supabase.rpc('create_gallery_table');
-        }
-    } catch (e) {
-        console.log('Tabel gallery sudah ada');
-    }
-}
+console.log('✅ User ID:', currentUserId);
 
 // ==================== FUNGSI CATATAN ====================
 async function loadNotes() {
+    console.log('📝 loadNotes() dipanggil');
     const notesList = document.getElementById('notesList');
+    if (!notesList) {
+        console.error('❌ Element notesList tidak ditemukan!');
+        return;
+    }
+    
     notesList.innerHTML = '<div class="loading">📝 Memuat catatan...</div>';
     
     try {
@@ -66,7 +37,13 @@ async function loadNotes() {
             .select('*')
             .order('created_at', { ascending: false });
         
-        if (error) throw error;
+        if (error) {
+            console.error('Error load notes:', error);
+            notesList.innerHTML = `<div class="empty-state">❌ Error: ${error.message}<br><br>Jalankan SQL di Supabase!</div>`;
+            return;
+        }
+        
+        console.log('📝 Data notes:', data);
         
         if (!data || data.length === 0) {
             notesList.innerHTML = '<div class="empty-state">📭 Belum ada catatan. Klik + Tambah Catatan!</div>';
@@ -126,11 +103,12 @@ async function loadNotes() {
         
     } catch (err) {
         console.error('Error:', err);
-        notesList.innerHTML = `<div class="empty-state">❌ Error: ${err.message}<br><br>📌 Pastikan tabel "notes" sudah dibuat di Supabase!</div>`;
+        notesList.innerHTML = `<div class="empty-state">❌ Error: ${err.message}</div>`;
     }
 }
 
 async function addNote() {
+    console.log('➕ addNote() dipanggil');
     const title = document.getElementById('noteTitle').value.trim();
     const content = document.getElementById('noteContent').value.trim();
     
@@ -145,7 +123,7 @@ async function addNote() {
     btn.disabled = true;
     
     try {
-        const { error } = await supabase
+        const { data, error } = await supabase
             .from('notes')
             .insert([{ 
                 title: title, 
@@ -155,11 +133,13 @@ async function addNote() {
         
         if (error) throw error;
         
+        console.log('✅ Catatan tersimpan');
         document.getElementById('noteTitle').value = '';
         document.getElementById('noteContent').value = '';
         await loadNotes();
         alert('✅ Catatan berhasil ditambahkan!');
     } catch (err) {
+        console.error('Error add note:', err);
         alert('❌ Gagal: ' + err.message);
     } finally {
         btn.textContent = originalText;
@@ -182,10 +162,7 @@ async function editNote(id, oldTitle, oldContent) {
     try {
         const { error } = await supabase
             .from('notes')
-            .update({ 
-                title: newTitle.trim(), 
-                content: newContent.trim()
-            })
+            .update({ title: newTitle.trim(), content: newContent.trim() })
             .eq('id', id);
         
         if (error) throw error;
@@ -242,7 +219,10 @@ async function deleteNote(id) {
 
 // ==================== FUNGSI CHAT ====================
 async function loadMessages() {
+    console.log('💬 loadMessages() dipanggil');
     const messagesArea = document.getElementById('messagesArea');
+    if (!messagesArea) return;
+    
     messagesArea.innerHTML = '<div class="loading">💬 Memuat pesan...</div>';
     
     try {
@@ -251,7 +231,13 @@ async function loadMessages() {
             .select('*')
             .order('created_at', { ascending: true });
         
-        if (error) throw error;
+        if (error) {
+            console.error('Error load messages:', error);
+            messagesArea.innerHTML = `<div class="empty-state">❌ Error: ${error.message}</div>`;
+            return;
+        }
+        
+        console.log('💬 Data messages:', data);
         
         if (!data || data.length === 0) {
             messagesArea.innerHTML = '<div class="empty-state">💬 Belum ada pesan. Kirim pesan pertama!</div>';
@@ -272,11 +258,13 @@ async function loadMessages() {
         }
         messagesArea.scrollTop = messagesArea.scrollHeight;
     } catch (err) {
-        messagesArea.innerHTML = `<div class="empty-state">❌ Error: ${err.message}<br><br>📌 Pastikan tabel "chat_messages" sudah dibuat di Supabase!</div>`;
+        console.error('Error:', err);
+        messagesArea.innerHTML = `<div class="empty-state">❌ Error: ${err.message}</div>`;
     }
 }
 
 async function sendChatMessage() {
+    console.log('💬 sendChatMessage() dipanggil');
     const input = document.getElementById('chatInput');
     const message = input.value.trim();
     
@@ -301,9 +289,11 @@ async function sendChatMessage() {
         
         if (error) throw error;
         
+        console.log('✅ Pesan terkirim');
         input.value = '';
         await loadMessages();
     } catch (err) {
+        console.error('Error send message:', err);
         alert('❌ Gagal mengirim: ' + err.message);
     } finally {
         btn.textContent = originalText;
@@ -314,7 +304,10 @@ async function sendChatMessage() {
 
 // ==================== FUNGSI GALLERY ====================
 async function loadGallery() {
+    console.log('🖼️ loadGallery() dipanggil');
     const galleryGrid = document.getElementById('galleryGrid');
+    if (!galleryGrid) return;
+    
     galleryGrid.innerHTML = '<div class="loading">🖼️ Memuat gallery...</div>';
     
     try {
@@ -323,7 +316,13 @@ async function loadGallery() {
             .select('*')
             .order('created_at', { ascending: false });
         
-        if (error) throw error;
+        if (error) {
+            console.error('Error load gallery:', error);
+            galleryGrid.innerHTML = `<div class="empty-state">❌ Error: ${error.message}</div>`;
+            return;
+        }
+        
+        console.log('🖼️ Data gallery:', data);
         
         if (!data || data.length === 0) {
             galleryGrid.innerHTML = '<div class="empty-state">🖼️ Belum ada gambar. Tambahkan URL gambar!</div>';
@@ -352,11 +351,13 @@ async function loadGallery() {
             });
         });
     } catch (err) {
-        galleryGrid.innerHTML = `<div class="empty-state">❌ Error: ${err.message}<br><br>📌 Pastikan tabel "gallery" sudah dibuat di Supabase!</div>`;
+        console.error('Error:', err);
+        galleryGrid.innerHTML = `<div class="empty-state">❌ Error: ${err.message}</div>`;
     }
 }
 
 async function addGalleryImage() {
+    console.log('🖼️ addGalleryImage() dipanggil');
     const imageUrl = document.getElementById('imageUrl').value.trim();
     
     if (!imageUrl) {
@@ -379,10 +380,12 @@ async function addGalleryImage() {
         
         if (error) throw error;
         
+        console.log('✅ Gambar tersimpan');
         document.getElementById('imageUrl').value = '';
         await loadGallery();
         alert('✅ Gambar berhasil ditambahkan!');
     } catch (err) {
+        console.error('Error add image:', err);
         alert('❌ Gagal: ' + err.message);
     } finally {
         btn.textContent = originalText;
@@ -411,22 +414,27 @@ async function deleteGalleryImage(id) {
 
 // ==================== REALTIME CHAT ====================
 function setupRealtime() {
+    console.log('📡 Setup realtime...');
     supabase
         .channel('chat_realtime')
         .on('postgres_changes', 
             { event: 'INSERT', schema: 'public', table: 'chat_messages' }, 
             () => {
+                console.log('📨 Pesan baru realtime!');
                 const activeTab = document.querySelector('.tab-btn.active');
                 if (activeTab && activeTab.dataset.tab === 'chat') {
                     loadMessages();
                 }
             }
         )
-        .subscribe();
+        .subscribe((status) => {
+            console.log('📡 Realtime status:', status);
+        });
 }
 
 // ==================== TAB NAVIGASI ====================
 function setupTabs() {
+    console.log('🔘 Setup tabs...');
     const tabs = document.querySelectorAll('.tab-btn');
     const contents = document.querySelectorAll('.tab-content');
     
@@ -434,6 +442,7 @@ function setupTabs() {
         const btn = tabs[i];
         btn.addEventListener('click', function() {
             const tabId = this.getAttribute('data-tab');
+            console.log('🔘 Tab diklik:', tabId);
             
             for (let j = 0; j < tabs.length; j++) {
                 tabs[j].classList.remove('active');
@@ -469,6 +478,7 @@ function escapeHtml(str) {
 
 // ==================== LOGOUT ====================
 function logout() {
+    console.log('🚪 Logout');
     sessionStorage.removeItem('isAuthenticated');
     sessionStorage.removeItem('userId');
     window.location.href = 'index.html';
@@ -477,22 +487,41 @@ function logout() {
 // ==================== INIT ====================
 async function init() {
     console.log('🚀 Inisialisasi Dashboard...');
+    
+    // Cek apakah elemen ada
+    console.log('🔍 Cek elemen:');
+    console.log('- notesList:', document.getElementById('notesList'));
+    console.log('- messagesArea:', document.getElementById('messagesArea'));
+    console.log('- galleryGrid:', document.getElementById('galleryGrid'));
+    console.log('- addNoteBtn:', document.getElementById('addNoteBtn'));
+    console.log('- sendChatBtn:', document.getElementById('sendChatBtn'));
+    console.log('- addImageBtn:', document.getElementById('addImageBtn'));
+    console.log('- logoutBtn:', document.getElementById('logoutBtn'));
+    
     setupTabs();
     setupRealtime();
     await loadNotes();
     await loadMessages();
     await loadGallery();
     
-    document.getElementById('addNoteBtn').addEventListener('click', addNote);
-    document.getElementById('sendChatBtn').addEventListener('click', sendChatMessage);
-    document.getElementById('addImageBtn').addEventListener('click', addGalleryImage);
-    document.getElementById('logoutBtn').addEventListener('click', logout);
+    const addNoteBtn = document.getElementById('addNoteBtn');
+    const sendChatBtn = document.getElementById('sendChatBtn');
+    const addImageBtn = document.getElementById('addImageBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const chatInput = document.getElementById('chatInput');
     
-    document.getElementById('chatInput').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') sendChatMessage();
-    });
+    if (addNoteBtn) addNoteBtn.addEventListener('click', addNote);
+    if (sendChatBtn) sendChatBtn.addEventListener('click', sendChatMessage);
+    if (addImageBtn) addImageBtn.addEventListener('click', addGalleryImage);
+    if (logoutBtn) logoutBtn.addEventListener('click', logout);
+    if (chatInput) {
+        chatInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') sendChatMessage();
+        });
+    }
     
     console.log('✅ Dashboard siap!');
 }
 
+// Jalankan init saat halaman siap
 init();
