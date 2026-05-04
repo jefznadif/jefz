@@ -18,9 +18,30 @@ if (!currentUserId) {
 }
 console.log('✅ User ID:', currentUserId);
 
+// ==================== TEST KONEKSI SUPABASE ====================
+async function testSupabaseConnection() {
+    console.log('🔍 Testing koneksi Supabase...');
+    try {
+        const { data, error } = await supabase.from('notes').select('count');
+        if (error) {
+            console.error('❌ Koneksi gagal:', error);
+            alert('Error: Tabel "notes" tidak ditemukan!\n\nJalankan SQL di Supabase terlebih dahulu.');
+            return false;
+        }
+        console.log('✅ Koneksi Supabase berhasil!');
+        return true;
+    } catch (err) {
+        console.error('❌ Error koneksi:', err);
+        alert('Error koneksi ke Supabase: ' + err.message);
+        return false;
+    }
+}
+
 // ==================== FUNGSI CATATAN ====================
 async function loadNotes() {
     const notesList = document.getElementById('notesList');
+    if (!notesList) return;
+    
     notesList.innerHTML = '<div class="loading">📝 Memuat catatan...</div>';
     
     try {
@@ -31,12 +52,14 @@ async function loadNotes() {
         
         if (error) {
             console.error('Error load notes:', error);
-            notesList.innerHTML = '<div class="empty-state">⚠️ Gagal memuat catatan. Jalankan SQL di Supabase!</div>';
+            notesList.innerHTML = `<div class="empty-state">⚠️ Error: ${error.message}</div>`;
             return;
         }
         
+        console.log('📝 Notes loaded:', data);
+        
         if (!data || data.length === 0) {
-            notesList.innerHTML = '<div class="empty-state">📭 Belum ada catatan</div>';
+            notesList.innerHTML = '<div class="empty-state">📭 Belum ada catatan. Buat catatan baru!</div>';
             return;
         }
         
@@ -48,6 +71,7 @@ async function loadNotes() {
             </div>
         `).join('');
     } catch (err) {
+        console.error('Error:', err);
         notesList.innerHTML = `<div class="empty-state">❌ Error: ${err.message}</div>`;
     }
 }
@@ -67,21 +91,25 @@ async function addNote() {
     btn.disabled = true;
     
     try {
-        const { error } = await supabase
+        const { data, error } = await supabase
             .from('notes')
             .insert([{ 
                 title: title, 
                 content: content, 
                 created_at: new Date().toISOString() 
-            }]);
+            }])
+            .select();
         
         if (error) throw error;
+        
+        console.log('✅ Note added:', data);
         
         document.getElementById('noteTitle').value = '';
         document.getElementById('noteContent').value = '';
         await loadNotes();
         alert('✅ Catatan berhasil ditambahkan!');
     } catch (err) {
+        console.error('Error adding note:', err);
         alert('❌ Gagal: ' + err.message);
     } finally {
         btn.textContent = originalText;
@@ -92,6 +120,8 @@ async function addNote() {
 // ==================== FUNGSI CHAT ====================
 async function loadMessages() {
     const messagesArea = document.getElementById('messagesArea');
+    if (!messagesArea) return;
+    
     messagesArea.innerHTML = '<div class="loading">💬 Memuat pesan...</div>';
     
     try {
@@ -101,9 +131,12 @@ async function loadMessages() {
             .order('created_at', { ascending: true });
         
         if (error) {
-            messagesArea.innerHTML = '<div class="empty-state">⚠️ Gagal memuat pesan. Jalankan SQL di Supabase!</div>';
+            console.error('Error load messages:', error);
+            messagesArea.innerHTML = `<div class="empty-state">⚠️ Error: ${error.message}</div>`;
             return;
         }
+        
+        console.log('💬 Messages loaded:', data);
         
         if (!data || data.length === 0) {
             messagesArea.innerHTML = '<div class="empty-state">💬 Belum ada pesan. Mulai chatting!</div>';
@@ -122,6 +155,7 @@ async function loadMessages() {
         
         messagesArea.scrollTop = messagesArea.scrollHeight;
     } catch (err) {
+        console.error('Error:', err);
         messagesArea.innerHTML = `<div class="empty-state">❌ Error: ${err.message}</div>`;
     }
 }
@@ -141,19 +175,23 @@ async function sendChatMessage() {
     btn.disabled = true;
     
     try {
-        const { error } = await supabase
+        const { data, error } = await supabase
             .from('chat_messages')
             .insert([{
                 message: message,
                 user_id: currentUserId,
                 created_at: new Date().toISOString()
-            }]);
+            }])
+            .select();
         
         if (error) throw error;
+        
+        console.log('✅ Message sent:', data);
         
         input.value = '';
         await loadMessages();
     } catch (err) {
+        console.error('Error sending message:', err);
         alert('❌ Gagal mengirim: ' + err.message);
     } finally {
         btn.textContent = originalText;
@@ -165,6 +203,8 @@ async function sendChatMessage() {
 // ==================== FUNGSI GALLERY ====================
 async function loadGallery() {
     const galleryGrid = document.getElementById('galleryGrid');
+    if (!galleryGrid) return;
+    
     galleryGrid.innerHTML = '<div class="loading">🖼️ Memuat gallery...</div>';
     
     try {
@@ -174,12 +214,15 @@ async function loadGallery() {
             .order('created_at', { ascending: false });
         
         if (error) {
-            galleryGrid.innerHTML = '<div class="empty-state">⚠️ Gagal memuat gallery. Jalankan SQL di Supabase!</div>';
+            console.error('Error load gallery:', error);
+            galleryGrid.innerHTML = `<div class="empty-state">⚠️ Error: ${error.message}</div>`;
             return;
         }
         
+        console.log('🖼️ Gallery loaded:', data);
+        
         if (!data || data.length === 0) {
-            galleryGrid.innerHTML = '<div class="empty-state">🖼️ Belum ada gambar</div>';
+            galleryGrid.innerHTML = '<div class="empty-state">🖼️ Belum ada gambar. Tambahkan URL gambar!</div>';
             return;
         }
         
@@ -191,6 +234,7 @@ async function loadGallery() {
             </div>
         `).join('');
     } catch (err) {
+        console.error('Error:', err);
         galleryGrid.innerHTML = `<div class="empty-state">❌ Error: ${err.message}</div>`;
     }
 }
@@ -209,19 +253,23 @@ async function addGalleryImage() {
     btn.disabled = true;
     
     try {
-        const { error } = await supabase
+        const { data, error } = await supabase
             .from('gallery')
             .insert([{ 
                 image_url: imageUrl, 
                 created_at: new Date().toISOString() 
-            }]);
+            }])
+            .select();
         
         if (error) throw error;
+        
+        console.log('✅ Image added:', data);
         
         document.getElementById('imageUrl').value = '';
         await loadGallery();
         alert('✅ Gambar berhasil ditambahkan!');
     } catch (err) {
+        console.error('Error adding image:', err);
         alert('❌ Gagal: ' + err.message);
     } finally {
         btn.textContent = originalText;
@@ -231,14 +279,12 @@ async function addGalleryImage() {
 
 // ==================== REALTIME CHAT ====================
 function setupRealtime() {
-    // Subscribe ke tabel chat_messages
     supabase
         .channel('chat_realtime')
         .on('postgres_changes', 
             { event: 'INSERT', schema: 'public', table: 'chat_messages' }, 
             (payload) => {
-                console.log('📨 Pesan baru:', payload);
-                // Refresh chat hanya jika tab chat sedang aktif
+                console.log('📨 Pesan baru realtime:', payload);
                 const activeTab = document.querySelector('.tab-btn.active');
                 if (activeTab && activeTab.dataset.tab === 'chat') {
                     loadMessages();
@@ -285,14 +331,19 @@ function escapeHtml(str) {
 }
 
 // ==================== INIT ====================
-document.addEventListener('DOMContentLoaded', () => {
-    console.log('✅ Dashboard siap dengan Supabase!');
+document.addEventListener('DOMContentLoaded', async () => {
+    console.log('🚀 Dashboard starting...');
     
-    setupTabs();
-    setupRealtime();
-    loadNotes();
-    loadMessages();
-    loadGallery();
+    // Test koneksi dulu
+    const connected = await testSupabaseConnection();
+    
+    if (connected) {
+        setupTabs();
+        setupRealtime();
+        await loadNotes();
+        await loadMessages();
+        await loadGallery();
+    }
     
     // Event listeners
     document.getElementById('addNoteBtn')?.addEventListener('click', addNote);
