@@ -1,4 +1,3 @@
-// SIMPLE PIN VERIFICATION - LANGSUNG BERFUNGSI
 document.addEventListener('DOMContentLoaded', function() {
     console.log('✅ Halaman PIN siap!');
     
@@ -14,24 +13,18 @@ document.addEventListener('DOMContentLoaded', function() {
     function verifyPin() {
         const pin = pinInput.value.trim();
         
-        console.log('PIN yang dimasukkan:', pin);
-        
         if (!pin) {
             showMessage('PIN tidak boleh kosong!', 'error');
             return;
         }
         
-        // PIN yang benar adalah 123456
         if (pin === '123456') {
             showMessage('✅ PIN benar! Mengalihkan...', 'success');
-            
-            // Simpan status login
             sessionStorage.setItem('isAuthenticated', 'true');
             
-            // Redirect ke dashboard
             setTimeout(function() {
                 window.location.href = 'dashboard.html';
-            }, 1000);
+            }, 500);
         } else {
             showMessage('❌ PIN salah! Gunakan PIN: 123456', 'error');
             pinInput.value = '';
@@ -41,9 +34,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     verifyBtn.addEventListener('click', verifyPin);
     pinInput.addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            verifyPin();
-        }
+        if (e.key === 'Enter') verifyPin();
     });
     
     pinInput.focus();
