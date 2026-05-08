@@ -1,26 +1,102 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ChatSphere - Login</title>
-  <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Jefz App</title>
+  <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
-  <div class="pin-container">
-    <div class="pin-card">
-      <div class="pin-icon">🔐</div>
-      <h1>ChatSphere</h1>
-      <p>Masukkan PIN untuk masuk</p>
-      <div class="pin-input-group">
-        <input type="password" id="pinInput" maxlength="6" placeholder="******" autofocus>
+  <div id="loginPage" class="page active">
+    <div class="glass-card login-card">
+      <div class="app-logo">✦</div>
+      <h1 class="app-title">Jefz App</h1>
+      <p class="app-sub">Masukkan PIN untuk masuk</p>
+      <div class="pin-dots" id="pinDots">
+        <span class="dot"></span>
+        <span class="dot"></span>
+        <span class="dot"></span>
+        <span class="dot"></span>
       </div>
-      <button id="verifyBtn" class="btn-primary">Verifikasi & Masuk</button>
-      <div id="messageBox" class="message-box"></div>
-      <!-- Bug 1 FIXED: PIN tidak ditampilkan di halaman -->
+      <div class="numpad">
+        <button class="num-btn" onclick="inputPin('1')">1</button>
+        <button class="num-btn" onclick="inputPin('2')">2</button>
+        <button class="num-btn" onclick="inputPin('3')">3</button>
+        <button class="num-btn" onclick="inputPin('4')">4</button>
+        <button class="num-btn" onclick="inputPin('5')">5</button>
+        <button class="num-btn" onclick="inputPin('6')">6</button>
+        <button class="num-btn" onclick="inputPin('7')">7</button>
+        <button class="num-btn" onclick="inputPin('8')">8</button>
+        <button class="num-btn" onclick="inputPin('9')">9</button>
+        <button class="num-btn" onclick="inputPin('a')">a</button>
+        <button class="num-btn" onclick="inputPin('z')">z</button>
+        <button class="num-btn del-btn" onclick="deletePin()">⌫</button>
+      </div>
+      <div id="loginMsg" class="login-msg"></div>
     </div>
   </div>
+
+  <div id="dashPage" class="page">
+    <div class="topbar">
+      <span class="topbar-title" id="tabTitle">📝 Catatan</span>
+      <div class="topbar-actions">
+        <button class="icon-btn" onclick="toggleTheme()" id="themeBtn">🌙</button>
+        <button class="icon-btn" onclick="doLogout()">🚪</button>
+      </div>
+    </div>
+
+    <div class="tab-body">
+      <div id="tabNotes" class="tab-content active-tab">
+        <div class="section-header">
+          <span>Catatan Saya</span>
+        </div>
+        <div id="notesList" class="notes-list"></div>
+        <div class="input-area">
+          <input type="text" id="noteTitle" class="inp" placeholder="Judul catatan"/>
+          <textarea id="noteBody" class="inp" rows="3" placeholder="Isi catatan..."></textarea>
+          <button class="btn-primary" onclick="addNote()">+ Tambah Catatan</button>
+        </div>
+      </div>
+
+      <div id="tabChat" class="tab-content">
+        <div id="chatMessages" class="chat-messages"></div>
+        <div class="chat-input-row">
+          <input type="text" id="chatInput" class="inp chat-inp" placeholder="Ketik pesan..."/>
+          <button class="btn-send" onclick="sendMessage()">➤</button>
+        </div>
+      </div>
+
+      <div id="tabGallery" class="tab-content">
+        <div class="section-header">
+          <span>Gallery</span>
+          <label class="btn-primary upload-label">
+            📁 Upload
+            <input type="file" id="fileInput" accept="image/*,video/*" style="display:none" onchange="uploadFile(this)"/>
+          </label>
+        </div>
+        <div id="galleryGrid" class="gallery-grid"></div>
+      </div>
+    </div>
+
+    <div class="bottom-nav">
+      <button class="nav-btn active" onclick="switchTab('notes', this)">
+        <span class="nav-icon">📝</span>
+        <span class="nav-label">Catatan</span>
+      </button>
+      <button class="nav-btn" onclick="switchTab('chat', this)">
+        <span class="nav-icon">💬</span>
+        <span class="nav-label">Chat</span>
+      </button>
+      <button class="nav-btn" onclick="switchTab('gallery', this)">
+        <span class="nav-icon">🖼️</span>
+        <span class="nav-label">Gallery</span>
+      </button>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="script.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>
