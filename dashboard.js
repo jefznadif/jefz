@@ -1,12 +1,9 @@
 // ==================== KONFIGURASI SUPABASE ====================
-// Bug 3 FIXED: Pindahkan key ke environment variable / server side idealnya,
-// tapi minimal jangan expose di repo public. Untuk sementara tetap di sini
-// tapi repo harus di-set PRIVATE.
 const SUPABASE_URL = 'https://cxlvnwbfdbymdoddjqwn.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN4bHZud2JmZGJ5bWRvZGRqcXduIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5MDUwOTMsImV4cCI6MjA5MzQ4MTA5M30.9jGx6eY7qzvQzW65xD7gVOMP1YZQzKjULginFNwSV-k';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// Bug 2 FIXED: Cek auth lebih aman, tidak mudah dibypass
+// ==================== CEK AUTH ====================
 function checkAuth() {
   const isAuth = sessionStorage.getItem('isAuthenticated');
   const authTime = sessionStorage.getItem('authTime');
@@ -14,12 +11,8 @@ function checkAuth() {
     window.location.href = 'index.html';
     return false;
   }
-  // Session expire setelah 1 jam
-  const now = Date.now();
-  if (now - parseInt(authTime) > 3600000) {
-    sessionStorage.removeItem('isAuthenticated');
-    sessionStorage.removeItem('authTime');
-    sessionStorage.removeItem('userId');
+  if (Date.now() - parseInt(authTime) > 3600000) {
+    sessionStorage.clear();
     alert('Sesi habis, silakan login kembali.');
     window.location.href = 'index.html';
     return false;
@@ -27,7 +20,7 @@ function checkAuth() {
   return true;
 }
 
-// Bug 5 FIXED: User ID persistent pakai localStorage agar konsisten antar tab
+// ==================== USER ID ====================
 let currentUserId = localStorage.getItem('userId');
 if (!currentUserId) {
   currentUserId = 'user_' + Math.random().toString(36).substr(2, 8);
@@ -37,7 +30,6 @@ if (!currentUserId) {
 // ==================== REALTIME ====================
 let realtimeChannel = null;
 
-// Bug 7 FIXED: Unsubscribe channel lama sebelum buat baru
 function setupRealtime() {
   if (realtimeChannel) {
     supabase.removeChannel(realtimeChannel);
@@ -57,6 +49,40 @@ function setupRealtime() {
     .subscribe();
 }
 
+// ==================== TABS ====================
+function setupTabs() {
+  const tabs = document.querySelectorAll('.tab-btn');
+  const contents = document.querySelectorAll('.tab-content');
+
+  tabs.forEach(btn => {
+    btn.addEventListener('click', function() {
+      const tabId = this.getAttribute('data-tab');
+
+      // Remove active dari semua tab button
+      tabs.forEach(t => t.classList.remove('active'));
+      this.classList.add('active');
+
+      // Hide semua content dulu
+      contents.forEach(c => {
+        c.classList.remove('active');
+        c.style.display = 'none';
+      });
+
+      // Show content yang dipilih
+      const activeContent = document.getElementById(tabId);
+      if (activeContent) {
+        activeContent.classList.add('active');
+        activeContent.style.display = 'block';
+      }
+
+      // Load data sesuai tab
+      if (tabId === 'notes') loadNotes();
+      if (tabId === 'chat') loadMessages();
+      if (tabId === 'gallery') loadGallery();
+    });
+  });
+}
+
 // ==================== FUNGSI CATATAN ====================
 async function loadNotes() {
   const notesList = document.getElementById('notesList');
@@ -67,6 +93,7 @@ async function loadNotes() {
       .from('notes')
       .select('*')
       .order('created_at', { ascending: false });
+
     if (error) {
       notesList.innerHTML = `<div class="empty-state">❌ Error: ${error.message}</div>`;
       return;
@@ -75,6 +102,7 @@ async function loadNotes() {
       notesList.innerHTML = '<div class="empty-state">📭 Belum ada catatan. Klik + Tambah Catatan!</div>';
       return;
     }
+
     notesList.innerHTML = '';
     data.forEach(note => {
       const noteDiv = document.createElement('div');
@@ -94,43 +122,40 @@ async function loadNotes() {
       notesList.appendChild(noteDiv);
     });
 
-    // Bug 10 FIXED: Pakai event delegation agar tidak menumpuk
+    // Event delegation — tidak menumpuk
     notesList.onclick = (e) => {
       const editBtn = e.target.closest('.btn-edit');
       const renameBtn = e.target.closest('.btn-rename');
       const deleteBtn = e.target.closest('.btn-delete');
-      if (editBtn) {
-        e.stopPropagation();
-        editNote(editBtn.dataset.id, editBtn.dataset.title, editBtn.dataset.content);
-      }
-      if (renameBtn) {
-        e.stopPropagation();
-        renameNote(renameBtn.dataset.id, renameBtn.dataset.title);
-      }
-      if (deleteBtn) {
-        e.stopPropagation();
-        deleteNote(deleteBtn.dataset.id);
-      }
+      if (editBtn) editNote(editBtn.dataset.id, editBtn.dataset.title, editBtn.dataset.content);
+      if (renameBtn) renameNote(renameBtn.dataset.id, renameBtn.dataset.title);
+      if (deleteBtn) deleteNote(deleteBtn.dataset.id);
     };
+
   } catch (err) {
     notesList.innerHTML = `<div class="empty-state">❌ Error: ${err.message}</div>`;
   }
 }
 
 async function addNote() {
-  const title = document.getElementById('noteTitle').value.trim();
-  const content = document.getElementById('noteContent').value.trim();
+  const titleEl = document.getElementById('noteTitle');
+  const contentEl = document.getElementById('noteContent');
+  const title = titleEl.value.trim();
+  const content = contentEl.value.trim();
+
   if (!title) { alert('Judul catatan tidak boleh kosong!'); return; }
+
   const btn = document.getElementById('addNoteBtn');
   btn.textContent = '⏳ Menyimpan...';
   btn.disabled = true;
+
   try {
     const { error } = await supabase.from('notes').insert([{
       title, content, created_at: new Date().toISOString()
     }]);
     if (error) throw error;
-    document.getElementById('noteTitle').value = '';
-    document.getElementById('noteContent').value = '';
+    titleEl.value = '';
+    contentEl.value = '';
     await loadNotes();
     alert('✅ Catatan berhasil ditambahkan!');
   } catch (err) {
@@ -197,6 +222,7 @@ async function loadMessages() {
       .from('chat_messages')
       .select('*')
       .order('created_at', { ascending: true });
+
     if (error) {
       messagesArea.innerHTML = `<div class="empty-state">❌ Error: ${error.message}</div>`;
       return;
@@ -205,6 +231,7 @@ async function loadMessages() {
       messagesArea.innerHTML = '<div class="empty-state">💬 Belum ada pesan. Kirim pesan pertama!</div>';
       return;
     }
+
     messagesArea.innerHTML = '';
     data.forEach(msg => {
       const isSent = msg.user_id === currentUserId;
@@ -255,6 +282,7 @@ async function loadGallery() {
       .from('gallery')
       .select('*')
       .order('created_at', { ascending: false });
+
     if (error) {
       galleryGrid.innerHTML = `<div class="empty-state">❌ Error: ${error.message}</div>`;
       return;
@@ -263,6 +291,7 @@ async function loadGallery() {
       galleryGrid.innerHTML = '<div class="empty-state">🖼️ Belum ada gambar. Tambahkan URL gambar!</div>';
       return;
     }
+
     galleryGrid.innerHTML = '';
     data.forEach(img => {
       const imgDiv = document.createElement('div');
@@ -275,14 +304,12 @@ async function loadGallery() {
       galleryGrid.appendChild(imgDiv);
     });
 
-    // Bug 10 FIXED: Event delegation untuk gallery
+    // Event delegation
     galleryGrid.onclick = (e) => {
       const deleteBtn = e.target.closest('.btn-delete-gallery');
-      if (deleteBtn) {
-        e.stopPropagation();
-        deleteGalleryImage(deleteBtn.dataset.id);
-      }
+      if (deleteBtn) deleteGalleryImage(deleteBtn.dataset.id);
     };
+
   } catch (err) {
     galleryGrid.innerHTML = `<div class="empty-state">❌ Error: ${err.message}</div>`;
   }
@@ -292,16 +319,10 @@ async function addGalleryImage() {
   const imageUrl = document.getElementById('imageUrl').value.trim();
   if (!imageUrl) { alert('Masukkan URL gambar!'); return; }
 
-  // Bug 6 FIXED: Validasi URL gambar
-  const validExtensions = /\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?.*)?$/i;
   const validUrl = /^https?:\/\/.+/i;
   if (!validUrl.test(imageUrl)) {
     alert('URL harus dimulai dengan http:// atau https://');
     return;
-  }
-  if (!validExtensions.test(imageUrl)) {
-    const confirm = window.confirm('URL mungkin bukan gambar. Tetap tambahkan?');
-    if (!confirm) return;
   }
 
   const btn = document.getElementById('addImageBtn');
@@ -335,25 +356,6 @@ async function deleteGalleryImage(id) {
   }
 }
 
-// ==================== TABS ====================
-// Bug 8 FIXED: Tab switch dengan load ulang yang benar
-function setupTabs() {
-  const tabs = document.querySelectorAll('.tab-btn');
-  const contents = document.querySelectorAll('.tab-content');
-  tabs.forEach(btn => {
-    btn.addEventListener('click', function() {
-      const tabId = this.getAttribute('data-tab');
-      tabs.forEach(t => t.classList.remove('active'));
-      this.classList.add('active');
-      contents.forEach(c => c.classList.remove('active'));
-      document.getElementById(tabId).classList.add('active');
-      if (tabId === 'notes') loadNotes();
-      if (tabId === 'chat') loadMessages();
-      if (tabId === 'gallery') loadGallery();
-    });
-  });
-}
-
 // ==================== HELPER ====================
 function escapeHtml(str) {
   if (!str) return '';
@@ -375,28 +377,22 @@ function logout() {
 }
 
 // ==================== INIT ====================
-// Bug 11 FIXED: Bungkus dengan DOMContentLoaded
 document.addEventListener('DOMContentLoaded', async function() {
-  // Bug 2 FIXED: Cek auth dulu sebelum apapun
   if (!checkAuth()) return;
 
+  // Setup tabs PERTAMA sebelum apapun
   setupTabs();
   setupRealtime();
-  await loadNotes();
 
-  const addNoteBtn = document.getElementById('addNoteBtn');
-  const sendChatBtn = document.getElementById('sendChatBtn');
-  const addImageBtn = document.getElementById('addImageBtn');
-  const logoutBtn = document.getElementById('logoutBtn');
-  const chatInput = document.getElementById('chatInput');
-
-  if (addNoteBtn) addNoteBtn.addEventListener('click', addNote);
-  if (sendChatBtn) sendChatBtn.addEventListener('click', sendChatMessage);
-  if (addImageBtn) addImageBtn.addEventListener('click', addGalleryImage);
-  if (logoutBtn) logoutBtn.addEventListener('click', logout);
-  if (chatInput) chatInput.addEventListener('keypress', function(e) {
+  // Pasang semua event listener tombol di sini
+  document.getElementById('addNoteBtn').addEventListener('click', addNote);
+  document.getElementById('sendChatBtn').addEventListener('click', sendChatMessage);
+  document.getElementById('addImageBtn').addEventListener('click', addGalleryImage);
+  document.getElementById('logoutBtn').addEventListener('click', logout);
+  document.getElementById('chatInput').addEventListener('keypress', function(e) {
     if (e.key === 'Enter') sendChatMessage();
   });
 
-  // Bug 4 FIXED: Semua console.log dihapus
+  // Load hanya tab yang aktif saat pertama (Notes)
+  await loadNotes();
 });
