@@ -1,63 +1,64 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ChatSphere - Dashboard</title>
-    <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ChatSphere - Dashboard</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="dashboard">
-        <div class="dashboard-header">
-            <h2>💬 ChatSphere</h2>
-            <button id="logoutBtn" class="btn-logout">🚪 Logout</button>
-        </div>
+  <div class="dashboard">
 
-        <div class="tabs">
-            <button class="tab-btn active" data-tab="notes">📝 Catatan</button>
-            <button class="tab-btn" data-tab="chat">💬 ChatRoom</button>
-            <button class="tab-btn" data-tab="gallery">🖼️ Gallery</button>
-        </div>
-
-        <!-- Tab Notes -->
-        <div id="notes" class="tab-content active">
-            <h3>📝 Catatan Saya</h3>
-            <div id="notesList" class="notes-list">
-                <div class="loading">Memuat catatan...</div>
-            </div>
-            <div class="add-section">
-                <input type="text" id="noteTitle" placeholder="Judul catatan">
-                <textarea id="noteContent" rows="2" placeholder="Isi catatan..."></textarea>
-                <button id="addNoteBtn" class="btn-success">+ Tambah Catatan</button>
-            </div>
-        </div>
-
-        <!-- Tab Chat -->
-        <div id="chat" class="tab-content">
-            <h3>💬 Ruang Chat Publik</h3>
-            <div id="messagesArea" class="messages-area">
-                <div class="loading">Memuat pesan...</div>
-            </div>
-            <div class="input-group">
-                <input type="text" id="chatInput" placeholder="Ketik pesan...">
-                <button id="sendChatBtn" class="btn-primary">Kirim Pesan</button>
-            </div>
-        </div>
-
-        <!-- Tab Gallery -->
-        <div id="gallery" class="tab-content">
-            <h3>🖼️ Gallery Gambar</h3>
-            <div id="galleryGrid" class="gallery-grid">
-                <div class="loading">Memuat gallery...</div>
-            </div>
-            <div class="add-section">
-                <input type="text" id="imageUrl" placeholder="URL gambar (https://...)">
-                <button id="addImageBtn" class="btn-success">+ Tambah Gambar</button>
-            </div>
-        </div>
+    <div class="dashboard-header">
+      <h2>💬 ChatSphere</h2>
+      <button onclick="logout()" class="btn-logout">🚪 Logout</button>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="dashboard.js"></script>
+    <div class="tabs">
+      <button onclick="switchTab('notes', this)" class="tab-btn active">📝 Catatan</button>
+      <button onclick="switchTab('chat', this)" class="tab-btn">💬 ChatRoom</button>
+      <button onclick="switchTab('gallery', this)" class="tab-btn">🖼️ Gallery</button>
+    </div>
+
+    <!-- Tab Notes -->
+    <div id="tab-notes" class="tab-content">
+      <h3>📝 Catatan Saya</h3>
+      <div id="notesList" class="notes-list">
+        <div class="loading">Memuat catatan...</div>
+      </div>
+      <div class="add-section">
+        <input type="text" id="noteTitle" placeholder="Judul catatan">
+        <textarea id="noteContent" rows="2" placeholder="Isi catatan..."></textarea>
+        <button onclick="addNote()" class="btn-success">+ Tambah Catatan</button>
+      </div>
+    </div>
+
+    <!-- Tab Chat -->
+    <div id="tab-chat" class="tab-content" style="display:none">
+      <h3>💬 Ruang Chat Publik</h3>
+      <div id="messagesArea" class="messages-area">
+        <div class="loading">Memuat pesan...</div>
+      </div>
+      <div class="input-group">
+        <input type="text" id="chatInput" placeholder="Ketik pesan..." onkeypress="if(event.key==='Enter') sendChatMessage()">
+        <button onclick="sendChatMessage()" class="btn-send">Kirim</button>
+      </div>
+    </div>
+
+    <!-- Tab Gallery -->
+    <div id="tab-gallery" class="tab-content" style="display:none">
+      <h3>🖼️ Gallery Gambar</h3>
+      <div id="galleryGrid" class="gallery-grid">
+        <div class="loading">Memuat gallery...</div>
+      </div>
+      <div class="add-section">
+        <input type="text" id="imageUrl" placeholder="URL gambar (https://...)">
+        <button onclick="addGalleryImage()" class="btn-success">+ Tambah Gambar</button>
+      </div>
+    </div>
+
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="dashboard.js"></script>
 </body>
 </html>
