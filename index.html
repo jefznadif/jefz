@@ -3,100 +3,107 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Jefz App</title>
+  <title>Jefz</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
-  <div id="loginPage" class="page active">
-    <div class="glass-card login-card">
-      <div class="app-logo">✦</div>
-      <h1 class="app-title">Jefz App</h1>
-      <p class="app-sub">Masukkan PIN untuk masuk</p>
-      <div class="pin-dots" id="pinDots">
-        <span class="dot"></span>
-        <span class="dot"></span>
-        <span class="dot"></span>
-        <span class="dot"></span>
-      </div>
-      <div class="numpad">
-        <button class="num-btn" onclick="inputPin('1')">1</button>
-        <button class="num-btn" onclick="inputPin('2')">2</button>
-        <button class="num-btn" onclick="inputPin('3')">3</button>
-        <button class="num-btn" onclick="inputPin('4')">4</button>
-        <button class="num-btn" onclick="inputPin('5')">5</button>
-        <button class="num-btn" onclick="inputPin('6')">6</button>
-        <button class="num-btn" onclick="inputPin('7')">7</button>
-        <button class="num-btn" onclick="inputPin('8')">8</button>
-        <button class="num-btn" onclick="inputPin('9')">9</button>
-        <button class="num-btn" onclick="inputPin('a')">a</button>
-        <button class="num-btn" onclick="inputPin('z')">z</button>
-        <button class="num-btn del-btn" onclick="deletePin()">⌫</button>
-      </div>
-      <div id="loginMsg" class="login-msg"></div>
+
+<!-- ===== LOGIN PAGE ===== -->
+<div id="loginPage" class="page active">
+  <div class="login-bg">
+    <div class="orb orb1"></div>
+    <div class="orb orb2"></div>
+    <div class="orb orb3"></div>
+  </div>
+  <div class="login-wrap">
+    <div class="login-logo">✦</div>
+    <h1 class="login-title">Jefz</h1>
+    <p class="login-sub">Enter your PIN to continue</p>
+    <div class="pin-field-wrap">
+      <input
+        type="password"
+        id="pinInput"
+        class="pin-input"
+        placeholder="••••"
+        autocomplete="off"
+        autofocus
+      />
+      <button class="pin-submit" onclick="doLogin()">→</button>
+    </div>
+    <div id="loginErr" class="login-err"></div>
+  </div>
+</div>
+
+<!-- ===== DASHBOARD ===== -->
+<div id="dashPage" class="page">
+
+  <div class="topbar">
+    <span class="topbar-title" id="topbarTitle">Catatan</span>
+    <div class="topbar-right">
+      <button class="tb-btn" onclick="toggleTheme()" id="themeBtn">🌙</button>
+      <button class="tb-btn" onclick="doLogout()">⏻</button>
     </div>
   </div>
 
-  <div id="dashPage" class="page">
-    <div class="topbar">
-      <span class="topbar-title" id="tabTitle">📝 Catatan</span>
-      <div class="topbar-actions">
-        <button class="icon-btn" onclick="toggleTheme()" id="themeBtn">🌙</button>
-        <button class="icon-btn" onclick="doLogout()">🚪</button>
-      </div>
-    </div>
-
-    <div class="tab-body">
-      <div id="tabNotes" class="tab-content active-tab">
-        <div class="section-header">
-          <span>Catatan Saya</span>
-        </div>
-        <div id="notesList" class="notes-list"></div>
-        <div class="input-area">
-          <input type="text" id="noteTitle" class="inp" placeholder="Judul catatan"/>
-          <textarea id="noteBody" class="inp" rows="3" placeholder="Isi catatan..."></textarea>
-          <button class="btn-primary" onclick="addNote()">+ Tambah Catatan</button>
-        </div>
-      </div>
-
-      <div id="tabChat" class="tab-content">
-        <div id="chatMessages" class="chat-messages"></div>
-        <div class="chat-input-row">
-          <input type="text" id="chatInput" class="inp chat-inp" placeholder="Ketik pesan..."/>
-          <button class="btn-send" onclick="sendMessage()">➤</button>
-        </div>
-      </div>
-
-      <div id="tabGallery" class="tab-content">
-        <div class="section-header">
-          <span>Gallery</span>
-          <label class="btn-primary upload-label">
-            📁 Upload
-            <input type="file" id="fileInput" accept="image/*,video/*" style="display:none" onchange="uploadFile(this)"/>
-          </label>
-        </div>
-        <div id="galleryGrid" class="gallery-grid"></div>
-      </div>
-    </div>
-
-    <div class="bottom-nav">
-      <button class="nav-btn active" onclick="switchTab('notes', this)">
-        <span class="nav-icon">📝</span>
-        <span class="nav-label">Catatan</span>
-      </button>
-      <button class="nav-btn" onclick="switchTab('chat', this)">
-        <span class="nav-icon">💬</span>
-        <span class="nav-label">Chat</span>
-      </button>
-      <button class="nav-btn" onclick="switchTab('gallery', this)">
-        <span class="nav-icon">🖼️</span>
-        <span class="nav-label">Gallery</span>
-      </button>
+  <!-- NOTES TAB -->
+  <div id="tabNotes" class="tab active-tab">
+    <div id="notesList" class="notes-list"></div>
+    <div class="note-form glass-panel">
+      <input type="text" id="noteTitle" class="field" placeholder="Judul catatan"/>
+      <textarea id="noteBody" class="field field-ta" rows="3" placeholder="Isi catatan..."></textarea>
+      <button class="btn-act" onclick="addNote()">+ Tambah</button>
     </div>
   </div>
 
-  <div id="toast" class="toast"></div>
+  <!-- CHAT TAB -->
+  <div id="tabChat" class="tab">
+    <div id="chatList" class="chat-list"></div>
+    <div class="chat-bar">
+      <input type="text" id="chatInput" class="field chat-field" placeholder="Pesan..." onkeydown="if(event.key==='Enter')sendMsg()"/>
+      <button class="btn-send" onclick="sendMsg()">↑</button>
+    </div>
+  </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="app.js"></script>
+  <!-- GALLERY TAB -->
+  <div id="tabGallery" class="tab">
+    <div class="gallery-header">
+      <label class="btn-upload">
+        + Upload
+        <input type="file" id="fileUpload" accept="image/*,video/*" style="display:none" onchange="doUpload(this)"/>
+      </label>
+    </div>
+    <div id="galleryGrid" class="gallery-grid"></div>
+  </div>
+
+  <!-- BOTTOM NAV -->
+  <nav class="bottom-nav">
+    <button class="nav-item active" onclick="goTab('Notes','Catatan',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      <span>Catatan</span>
+    </button>
+    <button class="nav-item" onclick="goTab('Chat','ChatRoom',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+      <span>Chat</span>
+    </button>
+    <button class="nav-item" onclick="goTab('Gallery','Gallery',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+      <span>Gallery</span>
+    </button>
+  </nav>
+
+</div>
+
+<!-- TOAST -->
+<div id="toast" class="toast"></div>
+
+<!-- LIGHTBOX -->
+<div id="lightbox" class="lightbox" onclick="closeLightbox()">
+  <img id="lightboxImg" src="" alt=""/>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="app.js"></script>
 </body>
 </html>
