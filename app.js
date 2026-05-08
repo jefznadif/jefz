@@ -1,157 +1,182 @@
 // ========== SUPABASE ==========
-const _url = 'https://cxlvnwbfdbymdoddjqwn.supabase.co';
-const _key = 'eyJhbGciOiJIUzI1NiIsR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN4bHZud2JmZGJ5bWRvZGRqcXduIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5MDUwOTMsImV4cCI6MjA5MzQ4MTA5M30.9jGx6eY7qzvQzW65xD7gVOMP1YZQzKjULginFNwSV-k';
-const sb = window.supabase.createClient(_url, _key);
+const SB_URL = 'https://cxlvnwbfdbymdoddjqwn.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN4bHZud2JmZGJ5bWRvZGRqcXduIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5MDUwOTMsImV4cCI6MjA5MzQ4MTA5M30.9jGx6eY7qzvQzW65xD7gVOMP1YZQzKjULginFNwSV-k';
+const sb = window.supabase.createClient(SB_URL, SB_KEY);
 
 // ========== STATE ==========
-let pinBuffer = '';
-let userId = localStorage.getItem('uid') || 'u_' + Math.random().toString(36).slice(2, 10);
-localStorage.setItem('uid', userId);
-let isDark = localStorage.getItem('theme') === 'dark';
+let uid = localStorage.getItem('uid');
+if (!uid) { uid = 'u_' + Math.random().toString(36).slice(2,10); localStorage.setItem('uid', uid); }
+let dark = localStorage.getItem('theme') === 'dark';
 
-// ========== INIT ==========
-window.onload = function () {
+// ========== BOOT ==========
+window.onload = () => {
   applyTheme();
+  // Cek session
   const auth = sessionStorage.getItem('auth');
-  const authTime = sessionStorage.getItem('authTime');
-  if (auth && authTime && Date.now() - parseInt(authTime) < 3600000) {
+  const t = sessionStorage.getItem('authTime');
+  if (auth && t && Date.now() - parseInt(t) < 3600000) {
     showDash();
+  } else {
+    document.getElementById('pinInput').focus();
   }
+
+  // Enter key on PIN
+  document.getElementById('pinInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') doLogin();
+  });
 };
 
 // ========== THEME ==========
 function applyTheme() {
-  document.body.className = isDark ? 'dark' : '';
-  document.getElementById('themeBtn').textContent = isDark ? '☀️' : '🌙';
+  document.body.classList.toggle('dark', dark);
+  const btn = document.getElementById('themeBtn');
+  if (btn) btn.textContent = dark ? '☀️' : '🌙';
 }
 
 function toggleTheme() {
-  isDark = !isDark;
-  localStorage.setItem('theme', isDark ? 'dark' : 'light');
+  dark = !dark;
+  localStorage.setItem('theme', dark ? 'dark' : 'light');
   applyTheme();
 }
 
 // ========== TOAST ==========
-function toast(msg, ok) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.className = 'toast show ' + (ok ? 'ok' : 'err');
-  setTimeout(() => { t.className = 'toast'; }, 2500);
+let toastTimer;
+function toast(msg, ok = true) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show ' + (ok ? 'ok' : 'err');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = 'toast'; }, 2800);
 }
 
-// ========== PIN ==========
-function inputPin(char) {
-  if (pinBuffer.length >= 6) return;
-  pinBuffer += char;
-  updateDots();
-  if (pinBuffer.length >= 1) {
-    setTimeout(() => tryLogin(), 300);
+// ========== LOGIN ==========
+async function doLogin() {
+  const pin = document.getElementById('pinInput').value.trim();
+  const errEl = document.getElementById('loginErr');
+  errEl.textContent = '';
+  if (!pin) { errEl.textContent = 'Masukkan PIN terlebih dahulu'; return; }
+
+  const btn = document.querySelector('.pin-submit');
+  btn.textContent = '...';
+  btn.disabled = true;
+
+  try {
+    // Ambil PIN dari Supabase
+    const { data, error } = await sb
+      .from('config')
+      .select('value')
+      .eq('key', 'pin')
+      .maybeSingle();
+
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error('Konfigurasi PIN tidak ditemukan di database');
+
+    if (pin === data.value) {
+      sessionStorage.setItem('auth', '1');
+      sessionStorage.setItem('authTime', Date.now().toString());
+      document.getElementById('pinInput').value = '';
+      showDash();
+    } else {
+      errEl.textContent = 'PIN salah, coba lagi';
+      document.getElementById('pinInput').value = '';
+      document.getElementById('pinInput').focus();
+    }
+  } catch (e) {
+    errEl.textContent = '⚠ ' + e.message;
+  } finally {
+    btn.textContent = '→';
+    btn.disabled = false;
   }
 }
 
-function deletePin() {
-  pinBuffer = pinBuffer.slice(0, -1);
-  updateDots();
+function doLogout() {
+  sessionStorage.clear();
+  document.getElementById('dashPage').className = 'page';
+  document.getElementById('loginPage').className = 'page active';
+  setTimeout(() => document.getElementById('pinInput').focus(), 100);
 }
 
-function updateDots() {
-  const dots = document.querySelectorAll('.dot');
-  dots.forEach((d, i) => {
-    d.classList.toggle('filled', i < pinBuffer.length);
-  });
-}
-
-async function tryLogin() {
-  const { data, error } = await sb.from('config').select('value').eq('key', 'pin').single();
-  if (error || !data) { toast('Error koneksi', false); pinBuffer = ''; updateDots(); return; }
-  if (pinBuffer === data.value) {
-    sessionStorage.setItem('auth', '1');
-    sessionStorage.setItem('authTime', Date.now().toString());
-    pinBuffer = '';
-    updateDots();
-    showDash();
-  } else if (pinBuffer.length >= data.value.length) {
-    toast('PIN salah!', false);
-    setTimeout(() => { pinBuffer = ''; updateDots(); }, 500);
-  }
-}
-
-// ========== PAGES ==========
 function showDash() {
   document.getElementById('loginPage').className = 'page';
   document.getElementById('dashPage').className = 'page active';
   loadNotes();
 }
 
-function doLogout() {
-  sessionStorage.clear();
-  pinBuffer = '';
-  updateDots();
-  document.getElementById('loginPage').className = 'page active';
-  document.getElementById('dashPage').className = 'page';
-  document.getElementById('loginMsg').textContent = '';
+// ========== TABS ==========
+function goTab(name, title, btn) {
+  // Hide all tabs
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active-tab'));
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+  // Show selected
+  document.getElementById('tab' + name).classList.add('active-tab');
+  btn.classList.add('active');
+  document.getElementById('topbarTitle').textContent = title;
+  // Load
+  if (name === 'Notes') loadNotes();
+  if (name === 'Chat') loadChat();
+  if (name === 'Gallery') loadGallery();
 }
 
-// ========== TABS ==========
-const tabTitles = { notes: '📝 Catatan', chat: '💬 ChatRoom', gallery: '🖼️ Gallery' };
+// ========== HELPERS ==========
+function esc(s) {
+  if (!s) return '';
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
 
-function switchTab(name, btn) {
-  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active-tab'));
-  document.querySelectorAll('.nav-btn').forEach(el => el.classList.remove('active'));
-  document.getElementById('tab' + name.charAt(0).toUpperCase() + name.slice(1)).classList.add('active-tab');
-  btn.classList.add('active');
-  document.getElementById('tabTitle').textContent = tabTitles[name];
-  if (name === 'notes') loadNotes();
-  if (name === 'chat') loadChat();
-  if (name === 'gallery') loadGallery();
+function fmtDate(d) {
+  return new Date(d).toLocaleString('id-ID', {day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+}
+
+function fmtTime(d) {
+  return new Date(d).toLocaleTimeString('id-ID', {hour:'2-digit',minute:'2-digit'});
 }
 
 // ========== NOTES ==========
 async function loadNotes() {
   const el = document.getElementById('notesList');
-  el.innerHTML = '<div class="loading">Memuat...</div>';
-  const { data, error } = await sb.from('notes').select('*').order('created_at', { ascending: false });
-  if (error) { el.innerHTML = '<div class="empty">❌ ' + error.message + '</div>'; return; }
-  if (!data.length) { el.innerHTML = '<div class="empty">Belum ada catatan.</div>'; return; }
+  el.innerHTML = '<p class="state-msg">Memuat...</p>';
+  const { data, error } = await sb.from('notes').select('*').order('created_at', {ascending: false});
+  if (error) { el.innerHTML = `<p class="state-msg err">Error: ${error.message}</p>`; return; }
+  if (!data.length) { el.innerHTML = '<p class="state-msg">Belum ada catatan.</p>'; return; }
   el.innerHTML = '';
   data.forEach(n => {
     const d = document.createElement('div');
     d.className = 'note-card';
     d.innerHTML = `
-      <div class="note-top">
-        <span class="note-title">${esc(n.title)}</span>
-        <div class="note-acts">
-          <button class="act-btn edit" onclick="editNote('${n.id}','${esc(n.title)}','${esc(n.content||'')}')">✏️</button>
-          <button class="act-btn del" onclick="delNote('${n.id}')">🗑️</button>
+      <div class="note-header">
+        <span class="note-ttl">${esc(n.title)}</span>
+        <div class="note-actions">
+          <button onclick="editNote('${n.id}','${esc(n.title)}','${esc(n.content||'')}')">✏</button>
+          <button onclick="delNote('${n.id}')">✕</button>
         </div>
       </div>
-      ${n.content ? `<div class="note-body">${esc(n.content)}</div>` : ''}
-      <div class="note-date">${fmtDate(n.created_at)}</div>
+      ${n.content ? `<p class="note-content">${esc(n.content)}</p>` : ''}
+      <span class="note-ts">${fmtDate(n.created_at)}</span>
     `;
     el.appendChild(d);
   });
 }
 
 async function addNote() {
-  const title = document.getElementById('noteTitle').value.trim();
-  const content = document.getElementById('noteBody').value.trim();
-  if (!title) { toast('Judul tidak boleh kosong!', false); return; }
-  const { error } = await sb.from('notes').insert([{ title, content }]);
+  const t = document.getElementById('noteTitle').value.trim();
+  const c = document.getElementById('noteBody').value.trim();
+  if (!t) { toast('Judul tidak boleh kosong!', false); return; }
+  const { error } = await sb.from('notes').insert([{title:t, content:c}]);
   if (error) { toast('Gagal: ' + error.message, false); return; }
   document.getElementById('noteTitle').value = '';
   document.getElementById('noteBody').value = '';
-  toast('✅ Catatan ditambahkan!', true);
+  toast('Catatan ditambahkan ✓');
   loadNotes();
 }
 
-async function editNote(id, oldTitle, oldContent) {
-  const newTitle = prompt('Edit judul:', oldTitle);
-  if (!newTitle) return;
-  const newContent = prompt('Edit isi:', oldContent);
-  if (newContent === null) return;
-  const { error } = await sb.from('notes').update({ title: newTitle, content: newContent }).eq('id', id);
+async function editNote(id, oldT, oldC) {
+  const newT = prompt('Edit judul:', oldT);
+  if (newT === null) return;
+  const newC = prompt('Edit isi:', oldC);
+  if (newC === null) return;
+  const { error } = await sb.from('notes').update({title: newT.trim(), content: newC.trim()}).eq('id', id);
   if (error) { toast('Gagal edit', false); return; }
-  toast('✅ Diedit!', true);
+  toast('Disimpan ✓');
   loadNotes();
 }
 
@@ -159,114 +184,97 @@ async function delNote(id) {
   if (!confirm('Hapus catatan ini?')) return;
   const { error } = await sb.from('notes').delete().eq('id', id);
   if (error) { toast('Gagal hapus', false); return; }
-  toast('🗑️ Dihapus!', true);
+  toast('Dihapus');
   loadNotes();
 }
 
 // ========== CHAT ==========
 async function loadChat() {
-  const el = document.getElementById('chatMessages');
-  el.innerHTML = '<div class="loading">Memuat...</div>';
-  const { data, error } = await sb.from('chat_messages').select('*').order('created_at', { ascending: true });
-  if (error) { el.innerHTML = '<div class="empty">❌ ' + error.message + '</div>'; return; }
-  if (!data.length) { el.innerHTML = '<div class="empty">Belum ada pesan.</div>'; return; }
+  const el = document.getElementById('chatList');
+  el.innerHTML = '<p class="state-msg">Memuat...</p>';
+  const { data, error } = await sb.from('chat_messages').select('*').order('created_at', {ascending: true});
+  if (error) { el.innerHTML = `<p class="state-msg err">Error: ${error.message}</p>`; return; }
+  if (!data.length) { el.innerHTML = '<p class="state-msg">Belum ada pesan.</p>'; return; }
   el.innerHTML = '';
   data.forEach(m => {
-    const isMine = m.user_id === userId;
+    const mine = m.user_id === uid;
     const d = document.createElement('div');
-    d.className = 'msg-wrap ' + (isMine ? 'mine' : 'theirs');
-    d.innerHTML = `
-      <div class="bubble">${esc(m.message)}</div>
-      <div class="msg-time">${fmtTime(m.created_at)}</div>
-    `;
+    d.className = 'msg-row ' + (mine ? 'mine' : 'theirs');
+    d.innerHTML = `<div class="bubble">${esc(m.message)}<span class="btime">${fmtTime(m.created_at)}</span></div>`;
     el.appendChild(d);
   });
   el.scrollTop = el.scrollHeight;
 }
 
-async function sendMessage() {
+async function sendMsg() {
   const input = document.getElementById('chatInput');
   const msg = input.value.trim();
   if (!msg) return;
   input.value = '';
-  const { error } = await sb.from('chat_messages').insert([{ message: msg, user_id: userId }]);
+  const { error } = await sb.from('chat_messages').insert([{message: msg, user_id: uid}]);
   if (error) { toast('Gagal kirim', false); return; }
   loadChat();
 }
 
-// Realtime chat
-sb.channel('chat').on('postgres_changes',
-  { event: 'INSERT', schema: 'public', table: 'chat_messages' },
-  () => {
-    const active = document.querySelector('.nav-btn.active');
-    if (active && active.textContent.includes('Chat')) loadChat();
-  }
-).subscribe();
+// Realtime
+sb.channel('chat_live')
+  .on('postgres_changes', {event:'INSERT', schema:'public', table:'chat_messages'}, () => {
+    const active = document.querySelector('.nav-item.active');
+    if (active && active.querySelector('span') && active.querySelector('span').textContent === 'Chat') {
+      loadChat();
+    }
+  }).subscribe();
 
 // ========== GALLERY ==========
 async function loadGallery() {
   const el = document.getElementById('galleryGrid');
-  el.innerHTML = '<div class="loading">Memuat...</div>';
-  const { data, error } = await sb.from('gallery').select('*').order('created_at', { ascending: false });
-  if (error) { el.innerHTML = '<div class="empty">❌ ' + error.message + '</div>'; return; }
-  if (!data.length) { el.innerHTML = '<div class="empty">Belum ada media.</div>'; return; }
+  el.innerHTML = '<p class="state-msg">Memuat...</p>';
+  const { data, error } = await sb.from('gallery').select('*').order('created_at', {ascending: false});
+  if (error) { el.innerHTML = `<p class="state-msg err">Error: ${error.message}</p>`; return; }
+  if (!data.length) { el.innerHTML = '<p class="state-msg">Belum ada media.</p>'; return; }
   el.innerHTML = '';
   data.forEach(f => {
+    const isVid = /\.(mp4|webm|mov|avi)$/i.test(f.file_name || '');
     const d = document.createElement('div');
-    d.className = 'gallery-item';
-    const isVideo = f.file_name && /\.(mp4|webm|mov)$/i.test(f.file_name);
-    d.innerHTML = `
-      ${isVideo
-        ? `<video src="${f.file_url}" class="gallery-media" controls></video>`
-        : `<img src="${f.file_url}" class="gallery-media" onclick="openImg('${f.file_url}')">`
-      }
-      <button class="del-media" onclick="delMedia('${f.id}','${f.file_name}')">✕</button>
-    `;
+    d.className = 'g-item';
+    d.innerHTML = isVid
+      ? `<video src="${esc(f.file_url)}" class="g-media" controls></video>`
+      : `<img src="${esc(f.file_url)}" class="g-media" onclick="openLightbox('${esc(f.file_url)}')" loading="lazy"/>`;
+    d.innerHTML += `<button class="g-del" onclick="delMedia('${f.id}','${esc(f.file_name)}')">✕</button>`;
     el.appendChild(d);
   });
 }
 
-async function uploadFile(input) {
+async function doUpload(input) {
   const file = input.files[0];
   if (!file) return;
-  toast('⏳ Mengupload...', true);
-  const fileName = Date.now() + '_' + file.name.replace(/\s/g, '_');
-  const { error: upErr } = await sb.storage.from('gallery').upload(fileName, file);
-  if (upErr) { toast('Gagal upload: ' + upErr.message, false); return; }
-  const { data: urlData } = sb.storage.from('gallery').getPublicUrl(fileName);
-  const { error: dbErr } = await sb.from('gallery').insert([{
-    file_url: urlData.publicUrl,
-    file_name: fileName
-  }]);
-  if (dbErr) { toast('Gagal simpan', false); return; }
-  toast('✅ Berhasil diupload!', true);
+  toast('Mengupload...', true);
+  const name = `${Date.now()}_${file.name.replace(/\s+/g,'_')}`;
+  const { error: upErr } = await sb.storage.from('gallery').upload(name, file);
+  if (upErr) { toast('Upload gagal: ' + upErr.message, false); return; }
+  const { data: pub } = sb.storage.from('gallery').getPublicUrl(name);
+  const { error: dbErr } = await sb.from('gallery').insert([{file_url: pub.publicUrl, file_name: name}]);
+  if (dbErr) { toast('Simpan gagal', false); return; }
+  toast('Berhasil diupload ✓');
   input.value = '';
   loadGallery();
 }
 
-async function delMedia(id, fileName) {
+async function delMedia(id, name) {
   if (!confirm('Hapus media ini?')) return;
-  await sb.storage.from('gallery').remove([fileName]);
+  await sb.storage.from('gallery').remove([name]);
   const { error } = await sb.from('gallery').delete().eq('id', id);
   if (error) { toast('Gagal hapus', false); return; }
-  toast('🗑️ Dihapus!', true);
+  toast('Dihapus');
   loadGallery();
 }
 
-function openImg(url) {
-  window.open(url, '_blank');
+// ========== LIGHTBOX ==========
+function openLightbox(url) {
+  document.getElementById('lightboxImg').src = url;
+  document.getElementById('lightbox').classList.add('show');
 }
 
-// ========== HELPERS ==========
-function esc(str) {
-  if (!str) return '';
-  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-}
-
-function fmtDate(d) {
-  return new Date(d).toLocaleString('id-ID', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
-}
-
-function fmtTime(d) {
-  return new Date(d).toLocaleTimeString('id-ID', { hour:'2-digit', minute:'2-digit' });
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('show');
 }
