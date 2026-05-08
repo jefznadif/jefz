@@ -1,27 +1,31 @@
 // ========== SUPABASE ==========
+// Paste anon key kamu dari: Supabase → Project Settings → API → anon public
 const SB_URL = 'https://cxlvnwbfdbymdoddjqwn.supabase.co';
-const SB_KEY = 'eyJhbGciOiJIUzI1NiIsR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN4bHZud2JmZGJ5bWRvZGRqcXduIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5MDUwOTMsImV4cCI6MjA5MzQ4MTA5M30.9jGx6eY7qzvQzW65xD7gVOMP1YZQzKjULginFNwSV-k';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN4bHZud2JmZGJ5bWRvZGRqcXduIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5MDUwOTMsImV4cCI6MjA5MzQ4MTA5M30.9jGx6eY7qzvQzW65xD7gVOMP1YZQzKjULginFNwSV-k';
 const sb = window.supabase.createClient(SB_URL, SB_KEY);
+
+// ========== PIN — dicek lokal, tidak perlu query DB ==========
+const CORRECT_PIN = 'zz';
 
 // ========== STATE ==========
 let uid = localStorage.getItem('uid');
-if (!uid) { uid = 'u_' + Math.random().toString(36).slice(2,10); localStorage.setItem('uid', uid); }
+if (!uid) {
+  uid = 'u_' + Math.random().toString(36).slice(2, 10);
+  localStorage.setItem('uid', uid);
+}
 let dark = localStorage.getItem('theme') === 'dark';
 
 // ========== BOOT ==========
-window.onload = () => {
+window.onload = function () {
   applyTheme();
-  // Cek session
-  const auth = sessionStorage.getItem('auth');
-  const t = sessionStorage.getItem('authTime');
-  if (auth && t && Date.now() - parseInt(t) < 3600000) {
+  var auth = sessionStorage.getItem('auth');
+  var t = sessionStorage.getItem('authTime');
+  if (auth && t && (Date.now() - parseInt(t)) < 3600000) {
     showDash();
   } else {
     document.getElementById('pinInput').focus();
   }
-
-  // Enter key on PIN
-  document.getElementById('pinInput').addEventListener('keydown', e => {
+  document.getElementById('pinInput').addEventListener('keydown', function (e) {
     if (e.key === 'Enter') doLogin();
   });
 };
@@ -29,7 +33,7 @@ window.onload = () => {
 // ========== THEME ==========
 function applyTheme() {
   document.body.classList.toggle('dark', dark);
-  const btn = document.getElementById('themeBtn');
+  var btn = document.getElementById('themeBtn');
   if (btn) btn.textContent = dark ? '☀️' : '🌙';
 }
 
@@ -40,62 +44,50 @@ function toggleTheme() {
 }
 
 // ========== TOAST ==========
-let toastTimer;
-function toast(msg, ok = true) {
-  const el = document.getElementById('toast');
+var toastTimer;
+function toast(msg, ok) {
+  if (ok === undefined) ok = true;
+  var el = document.getElementById('toast');
   el.textContent = msg;
   el.className = 'toast show ' + (ok ? 'ok' : 'err');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.className = 'toast'; }, 2800);
+  toastTimer = setTimeout(function () { el.className = 'toast'; }, 2800);
 }
 
 // ========== LOGIN ==========
-async function doLogin() {
-  const pin = document.getElementById('pinInput').value.trim();
-  const errEl = document.getElementById('loginErr');
+function doLogin() {
+  var pin = document.getElementById('pinInput').value;
+  var errEl = document.getElementById('loginErr');
   errEl.textContent = '';
-  if (!pin) { errEl.textContent = 'Masukkan PIN terlebih dahulu'; return; }
 
-  const btn = document.querySelector('.pin-submit');
-  btn.textContent = '...';
-  btn.disabled = true;
+  if (!pin) {
+    errEl.textContent = 'Masukkan PIN terlebih dahulu';
+    return;
+  }
 
-  try {
-    // Ambil PIN dari Supabase
-    const { data, error } = await sb
-      .from('config')
-      .select('value')
-      .eq('key', 'pin')
-      .maybeSingle();
-
-    if (error) throw new Error(error.message);
-    if (!data) throw new Error('Konfigurasi PIN tidak ditemukan di database');
-
-    if (pin === data.value) {
-      sessionStorage.setItem('auth', '1');
-      sessionStorage.setItem('authTime', Date.now().toString());
-      document.getElementById('pinInput').value = '';
-      showDash();
-    } else {
-      errEl.textContent = 'PIN salah, coba lagi';
-      document.getElementById('pinInput').value = '';
-      document.getElementById('pinInput').focus();
-    }
-  } catch (e) {
-    errEl.textContent = '⚠ ' + e.message;
-  } finally {
-    btn.textContent = '→';
-    btn.disabled = false;
+  if (pin === CORRECT_PIN) {
+    sessionStorage.setItem('auth', '1');
+    sessionStorage.setItem('authTime', Date.now().toString());
+    document.getElementById('pinInput').value = '';
+    showDash();
+  } else {
+    errEl.textContent = 'PIN salah, coba lagi';
+    document.getElementById('pinInput').value = '';
+    document.getElementById('pinInput').focus();
   }
 }
 
+// ========== LOGOUT ==========
 function doLogout() {
-  sessionStorage.clear();
+  if (!confirm('Yakin mau logout?')) return;
+  sessionStorage.removeItem('auth');
+  sessionStorage.removeItem('authTime');
   document.getElementById('dashPage').className = 'page';
   document.getElementById('loginPage').className = 'page active';
-  setTimeout(() => document.getElementById('pinInput').focus(), 100);
+  setTimeout(function () { document.getElementById('pinInput').focus(); }, 150);
 }
 
+// ========== PAGES ==========
 function showDash() {
   document.getElementById('loginPage').className = 'page';
   document.getElementById('dashPage').className = 'page active';
@@ -104,14 +96,11 @@ function showDash() {
 
 // ========== TABS ==========
 function goTab(name, title, btn) {
-  // Hide all tabs
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active-tab'));
-  document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
-  // Show selected
+  document.querySelectorAll('.tab').forEach(function (t) { t.classList.remove('active-tab'); });
+  document.querySelectorAll('.nav-item').forEach(function (b) { b.classList.remove('active'); });
   document.getElementById('tab' + name).classList.add('active-tab');
   btn.classList.add('active');
   document.getElementById('topbarTitle').textContent = title;
-  // Load
   if (name === 'Notes') loadNotes();
   if (name === 'Chat') loadChat();
   if (name === 'Gallery') loadGallery();
@@ -120,49 +109,53 @@ function goTab(name, title, btn) {
 // ========== HELPERS ==========
 function esc(s) {
   if (!s) return '';
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function fmtDate(d) {
-  return new Date(d).toLocaleString('id-ID', {day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  return new Date(d).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 function fmtTime(d) {
-  return new Date(d).toLocaleTimeString('id-ID', {hour:'2-digit',minute:'2-digit'});
+  return new Date(d).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
 }
 
 // ========== NOTES ==========
 async function loadNotes() {
-  const el = document.getElementById('notesList');
+  var el = document.getElementById('notesList');
   el.innerHTML = '<p class="state-msg">Memuat...</p>';
-  const { data, error } = await sb.from('notes').select('*').order('created_at', {ascending: false});
-  if (error) { el.innerHTML = `<p class="state-msg err">Error: ${error.message}</p>`; return; }
-  if (!data.length) { el.innerHTML = '<p class="state-msg">Belum ada catatan.</p>'; return; }
+  var res = await sb.from('notes').select('*').order('created_at', { ascending: false });
+  if (res.error) { el.innerHTML = '<p class="state-msg err">Error: ' + res.error.message + '</p>'; return; }
+  if (!res.data || !res.data.length) { el.innerHTML = '<p class="state-msg">Belum ada catatan.</p>'; return; }
   el.innerHTML = '';
-  data.forEach(n => {
-    const d = document.createElement('div');
+  res.data.forEach(function (n) {
+    var d = document.createElement('div');
     d.className = 'note-card';
-    d.innerHTML = `
-      <div class="note-header">
-        <span class="note-ttl">${esc(n.title)}</span>
-        <div class="note-actions">
-          <button onclick="editNote('${n.id}','${esc(n.title)}','${esc(n.content||'')}')">✏</button>
-          <button onclick="delNote('${n.id}')">✕</button>
-        </div>
-      </div>
-      ${n.content ? `<p class="note-content">${esc(n.content)}</p>` : ''}
-      <span class="note-ts">${fmtDate(n.created_at)}</span>
-    `;
+    d.innerHTML =
+      '<div class="note-header">' +
+        '<span class="note-ttl">' + esc(n.title) + '</span>' +
+        '<div class="note-actions">' +
+          '<button onclick="editNote(\'' + n.id + '\',\'' + esc(n.title) + '\',\'' + esc(n.content || '') + '\')">✏</button>' +
+          '<button onclick="delNote(\'' + n.id + '\')">✕</button>' +
+        '</div>' +
+      '</div>' +
+      (n.content ? '<p class="note-content">' + esc(n.content) + '</p>' : '') +
+      '<span class="note-ts">' + fmtDate(n.created_at) + '</span>';
     el.appendChild(d);
   });
 }
 
 async function addNote() {
-  const t = document.getElementById('noteTitle').value.trim();
-  const c = document.getElementById('noteBody').value.trim();
-  if (!t) { toast('Judul tidak boleh kosong!', false); return; }
-  const { error } = await sb.from('notes').insert([{title:t, content:c}]);
-  if (error) { toast('Gagal: ' + error.message, false); return; }
+  var title = document.getElementById('noteTitle').value.trim();
+  var content = document.getElementById('noteBody').value.trim();
+  if (!title) { toast('Judul tidak boleh kosong!', false); return; }
+  var res = await sb.from('notes').insert([{ title: title, content: content }]);
+  if (res.error) { toast('Gagal: ' + res.error.message, false); return; }
   document.getElementById('noteTitle').value = '';
   document.getElementById('noteBody').value = '';
   toast('Catatan ditambahkan ✓');
@@ -170,91 +163,89 @@ async function addNote() {
 }
 
 async function editNote(id, oldT, oldC) {
-  const newT = prompt('Edit judul:', oldT);
+  var newT = prompt('Edit judul:', oldT);
   if (newT === null) return;
-  const newC = prompt('Edit isi:', oldC);
+  var newC = prompt('Edit isi:', oldC);
   if (newC === null) return;
-  const { error } = await sb.from('notes').update({title: newT.trim(), content: newC.trim()}).eq('id', id);
-  if (error) { toast('Gagal edit', false); return; }
+  var res = await sb.from('notes').update({ title: newT.trim(), content: newC.trim() }).eq('id', id);
+  if (res.error) { toast('Gagal edit', false); return; }
   toast('Disimpan ✓');
   loadNotes();
 }
 
 async function delNote(id) {
   if (!confirm('Hapus catatan ini?')) return;
-  const { error } = await sb.from('notes').delete().eq('id', id);
-  if (error) { toast('Gagal hapus', false); return; }
+  var res = await sb.from('notes').delete().eq('id', id);
+  if (res.error) { toast('Gagal hapus', false); return; }
   toast('Dihapus');
   loadNotes();
 }
 
 // ========== CHAT ==========
 async function loadChat() {
-  const el = document.getElementById('chatList');
+  var el = document.getElementById('chatList');
   el.innerHTML = '<p class="state-msg">Memuat...</p>';
-  const { data, error } = await sb.from('chat_messages').select('*').order('created_at', {ascending: true});
-  if (error) { el.innerHTML = `<p class="state-msg err">Error: ${error.message}</p>`; return; }
-  if (!data.length) { el.innerHTML = '<p class="state-msg">Belum ada pesan.</p>'; return; }
+  var res = await sb.from('chat_messages').select('*').order('created_at', { ascending: true });
+  if (res.error) { el.innerHTML = '<p class="state-msg err">Error: ' + res.error.message + '</p>'; return; }
+  if (!res.data || !res.data.length) { el.innerHTML = '<p class="state-msg">Belum ada pesan.</p>'; return; }
   el.innerHTML = '';
-  data.forEach(m => {
-    const mine = m.user_id === uid;
-    const d = document.createElement('div');
-    d.className = 'msg-row ' + (mine ? 'mine' : 'theirs');
-    d.innerHTML = `<div class="bubble">${esc(m.message)}<span class="btime">${fmtTime(m.created_at)}</span></div>`;
+  res.data.forEach(function (m) {
+    var d = document.createElement('div');
+    d.className = 'msg-row ' + (m.user_id === uid ? 'mine' : 'theirs');
+    d.innerHTML = '<div class="bubble">' + esc(m.message) + '<span class="btime">' + fmtTime(m.created_at) + '</span></div>';
     el.appendChild(d);
   });
   el.scrollTop = el.scrollHeight;
 }
 
 async function sendMsg() {
-  const input = document.getElementById('chatInput');
-  const msg = input.value.trim();
+  var input = document.getElementById('chatInput');
+  var msg = input.value.trim();
   if (!msg) return;
   input.value = '';
-  const { error } = await sb.from('chat_messages').insert([{message: msg, user_id: uid}]);
-  if (error) { toast('Gagal kirim', false); return; }
+  var res = await sb.from('chat_messages').insert([{ message: msg, user_id: uid }]);
+  if (res.error) { toast('Gagal kirim', false); return; }
   loadChat();
 }
 
-// Realtime
+// Realtime chat
 sb.channel('chat_live')
-  .on('postgres_changes', {event:'INSERT', schema:'public', table:'chat_messages'}, () => {
-    const active = document.querySelector('.nav-item.active');
-    if (active && active.querySelector('span') && active.querySelector('span').textContent === 'Chat') {
-      loadChat();
-    }
-  }).subscribe();
+  .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, function () {
+    var active = document.querySelector('.nav-item.active span');
+    if (active && active.textContent === 'Chat') loadChat();
+  })
+  .subscribe();
 
 // ========== GALLERY ==========
 async function loadGallery() {
-  const el = document.getElementById('galleryGrid');
+  var el = document.getElementById('galleryGrid');
   el.innerHTML = '<p class="state-msg">Memuat...</p>';
-  const { data, error } = await sb.from('gallery').select('*').order('created_at', {ascending: false});
-  if (error) { el.innerHTML = `<p class="state-msg err">Error: ${error.message}</p>`; return; }
-  if (!data.length) { el.innerHTML = '<p class="state-msg">Belum ada media.</p>'; return; }
+  var res = await sb.from('gallery').select('*').order('created_at', { ascending: false });
+  if (res.error) { el.innerHTML = '<p class="state-msg err">Error: ' + res.error.message + '</p>'; return; }
+  if (!res.data || !res.data.length) { el.innerHTML = '<p class="state-msg">Belum ada media.</p>'; return; }
   el.innerHTML = '';
-  data.forEach(f => {
-    const isVid = /\.(mp4|webm|mov|avi)$/i.test(f.file_name || '');
-    const d = document.createElement('div');
+  res.data.forEach(function (f) {
+    var isVid = /\.(mp4|webm|mov|avi)$/i.test(f.file_name || '');
+    var d = document.createElement('div');
     d.className = 'g-item';
     d.innerHTML = isVid
-      ? `<video src="${esc(f.file_url)}" class="g-media" controls></video>`
-      : `<img src="${esc(f.file_url)}" class="g-media" onclick="openLightbox('${esc(f.file_url)}')" loading="lazy"/>`;
-    d.innerHTML += `<button class="g-del" onclick="delMedia('${f.id}','${esc(f.file_name)}')">✕</button>`;
+      ? '<video src="' + esc(f.file_url) + '" class="g-media" controls></video>'
+      : '<img src="' + esc(f.file_url) + '" class="g-media" onclick="openLightbox(\'' + esc(f.file_url) + '\')" loading="lazy"/>';
+    d.innerHTML += '<button class="g-del" onclick="delMedia(\'' + f.id + '\',\'' + esc(f.file_name) + '\')">✕</button>';
     el.appendChild(d);
   });
 }
 
 async function doUpload(input) {
-  const file = input.files[0];
+  var file = input.files[0];
   if (!file) return;
-  toast('Mengupload...', true);
-  const name = `${Date.now()}_${file.name.replace(/\s+/g,'_')}`;
-  const { error: upErr } = await sb.storage.from('gallery').upload(name, file);
-  if (upErr) { toast('Upload gagal: ' + upErr.message, false); return; }
-  const { data: pub } = sb.storage.from('gallery').getPublicUrl(name);
-  const { error: dbErr } = await sb.from('gallery').insert([{file_url: pub.publicUrl, file_name: name}]);
-  if (dbErr) { toast('Simpan gagal', false); return; }
+  toast('Mengupload...');
+  var name = Date.now() + '_' + file.name.replace(/\s+/g, '_');
+  var upRes = await sb.storage.from('gallery').upload(name, file);
+  if (upRes.error) { toast('Upload gagal: ' + upRes.error.message, false); return; }
+  var pub = sb.storage.from('gallery').getPublicUrl(name);
+  var dbRes = await sb.from('gallery').insert([{ file_url: pub.data.publicUrl, file_name: name }]);
+  if (dbRes.error) { toast('Simpan gagal', false); return; }
   toast('Berhasil diupload ✓');
   input.value = '';
   loadGallery();
@@ -263,8 +254,8 @@ async function doUpload(input) {
 async function delMedia(id, name) {
   if (!confirm('Hapus media ini?')) return;
   await sb.storage.from('gallery').remove([name]);
-  const { error } = await sb.from('gallery').delete().eq('id', id);
-  if (error) { toast('Gagal hapus', false); return; }
+  var res = await sb.from('gallery').delete().eq('id', id);
+  if (res.error) { toast('Gagal hapus', false); return; }
   toast('Dihapus');
   loadGallery();
 }
@@ -277,4 +268,5 @@ function openLightbox(url) {
 
 function closeLightbox() {
   document.getElementById('lightbox').classList.remove('show');
+  document.getElementById('lightboxImg').src = '';
 }
