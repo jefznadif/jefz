@@ -51,29 +51,23 @@
       </div>
       <div class="selected-acc-info" id="selectedAccInfo"></div>
       <div class="pin-field-wrap">
-        <input
-          type="password"
-          id="pinInput"
-          class="pin-input"
-          placeholder="Masukkan PIN"
-          autocomplete="off"
-        />
+        <input type="password" id="pinInput" class="pin-input" placeholder="Masukkan PIN" autocomplete="off"/>
         <button class="pin-submit" onclick="doLogin()">→</button>
       </div>
       <div id="loginErr" class="login-err"></div>
     </div>
-
   </div>
 </div>
 
 <!-- ===== DASHBOARD ===== -->
 <div id="dashPage" class="page">
 
-  <div class="topbar">
+  <!-- FIXED HEADER -->
+  <header class="topbar">
     <div class="topbar-left">
       <div class="topbar-avatar" id="topbarAvatar"></div>
       <div>
-        <div class="topbar-title" id="topbarTitle">Catatan</div>
+        <div class="topbar-title" id="topbarTitle">ChatRoom</div>
         <div class="topbar-user" id="topbarUser"></div>
       </div>
     </div>
@@ -81,24 +75,22 @@
       <button class="tb-btn" onclick="toggleTheme()" id="themeBtn">🌙</button>
       <button class="tb-btn logout-btn" onclick="doLogout()">Logout</button>
     </div>
-  </div>
+  </header>
 
-  <!-- NOTES TAB -->
-  <div id="tabNotes" class="tab active-tab">
-    <div id="notesList" class="notes-list"></div>
-    <div class="note-form glass-panel">
-      <input type="text" id="noteTitle" class="field" placeholder="Judul catatan"/>
-      <textarea id="noteBody" class="field field-ta" rows="3" placeholder="Isi catatan..."></textarea>
-      <button class="btn-act" onclick="addNote()">+ Tambah</button>
-    </div>
-  </div>
-
-  <!-- CHAT TAB -->
-  <div id="tabChat" class="tab">
+  <!-- CHAT TAB (DEFAULT) -->
+  <div id="tabChat" class="tab active-tab">
     <div id="chatList" class="chat-list"></div>
     <div class="chat-bar">
       <input type="text" id="chatInput" class="field chat-field" placeholder="Pesan..." onkeydown="if(event.key==='Enter')sendMsg()"/>
       <button class="btn-send" onclick="sendMsg()">↑</button>
+    </div>
+  </div>
+
+  <!-- NOTES TAB -->
+  <div id="tabNotes" class="tab">
+    <div id="notesList" class="notes-list"></div>
+    <div class="notes-fab-wrap">
+      <button class="fab-btn" onclick="openNoteModal()" id="fabAddNote">+</button>
     </div>
   </div>
 
@@ -115,11 +107,11 @@
 
   <!-- BOTTOM NAV -->
   <nav class="bottom-nav">
-    <button class="nav-item active" onclick="goTab('Notes','Catatan',this)">
+    <button class="nav-item" onclick="goTab('Notes','Catatan',this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
       <span>Catatan</span>
     </button>
-    <button class="nav-item" onclick="goTab('Chat','ChatRoom',this)">
+    <button class="nav-item active" onclick="goTab('Chat','ChatRoom',this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
       <span>Chat</span>
     </button>
@@ -128,7 +120,32 @@
       <span>Gallery</span>
     </button>
   </nav>
+</div>
 
+<!-- MODAL: Tambah Catatan -->
+<div id="noteModal" class="modal-overlay" onclick="closeNoteModal(event)">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title">Catatan Baru</span>
+      <button class="modal-close" onclick="closeNoteModal()">✕</button>
+    </div>
+    <input type="text" id="noteTitleInput" class="field" placeholder="Judul catatan..."/>
+    <textarea id="noteBodyInput" class="field field-ta" rows="4" placeholder="Isi catatan..."></textarea>
+    <button class="btn-act" onclick="addNote()">Simpan Catatan</button>
+  </div>
+</div>
+
+<!-- MODAL: Edit Judul Catatan -->
+<div id="editModal" class="modal-overlay" onclick="closeEditModal(event)">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title">Edit Judul</span>
+      <button class="modal-close" onclick="closeEditModal()">✕</button>
+    </div>
+    <input type="text" id="editTitleInput" class="field" placeholder="Judul baru..."/>
+    <input type="hidden" id="editNoteId"/>
+    <button class="btn-act" onclick="saveEditNote()">Simpan</button>
+  </div>
 </div>
 
 <!-- TOAST -->
