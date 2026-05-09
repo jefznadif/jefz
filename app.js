@@ -16,6 +16,7 @@ let uid = localStorage.getItem('uid');
 if (!uid) { uid = 'u_' + Math.random().toString(36).slice(2,10); localStorage.setItem('uid', uid); }
 let chatChannel = null;
 let isChatActive = false;
+let chatLoaded = false;
 
 // ========== BOOT ==========
 window.onload = function () {
@@ -98,6 +99,7 @@ function doLogin() {
     sessionStorage.setItem('authTime', Date.now().toString());
     sessionStorage.setItem('accName', currentAccount.name);
     sessionStorage.setItem('accRole', currentAccount.role);
+    sessionStorage.setItem('activeTab', 'Chat'); // default tab
     document.getElementById('pinInput').value = '';
     showDash();
   } else {
@@ -113,6 +115,7 @@ function doLogout() {
   currentAccount = null;
   pendingAccount = null;
   isChatActive = false;
+  chatLoaded = false;
   if (chatChannel) { sb.removeChannel(chatChannel); chatChannel = null; }
   document.getElementById('stepPin').style.display = 'none';
   document.getElementById('stepAccount').style.display = 'block';
@@ -122,24 +125,50 @@ function doLogout() {
   document.getElementById('loginPage').className = 'page active';
 }
 
-// ========== SHOW DASH — default ke ChatRoom ==========
+// ========== SHOW DASH ==========
 function showDash() {
   document.getElementById('loginPage').className = 'page';
   document.getElementById('dashPage').className = 'page active';
 
-  // Set topbar
+  // Set topbar avatar
   var initial = currentAccount.name.charAt(0).toUpperCase();
   var avatarEl = document.getElementById('topbarAvatar');
   avatarEl.textContent = initial;
   avatarEl.style.background = currentAccount.color;
-  document.getElementById('topbarUser').textContent = currentAccount.name + (currentAccount.role === 'admin' ? ' 👑' : ' 👤');
+  document.getElementById('topbarUser').textContent =
+    currentAccount.name + (currentAccount.role === 'admin' ? ' 👑' : ' 👤');
 
   // Upload hanya admin
   var ul = document.getElementById('uploadLabel');
   if (ul) ul.style.display = currentAccount.role === 'admin' ? 'inline-block' : 'none';
 
-  // Default ke ChatRoom
-  goTabById('Chat', 'ChatRoom', 'Chat');
+  // Setup realtime
+  setupRealtime();
+
+  // Restore tab terakhir, default Chat
+  var lastTab = sessionStorage.getItem('activeTab') || 'Chat';
+  var tabNavMap = { 'Chat': 'Chat', 'Notes': 'Catatan', 'Gallery': 'Gallery' };
+  var title = tabNavMap[lastTab] || 'ChatRoom';
+  if (lastTab === 'Chat') title = 'ChatRoom';
+
+  // Aktifkan nav button yang sesuai
+  document.querySelectorAll('.nav-item').forEach(function(b) {
+    var label = b.querySelector('span') ? b.querySelector('span').textContent : '';
+    var match = (lastTab === 'Chat' && label === 'Chat') ||
+                (lastTab === 'Notes' && label === 'Catatan') ||
+                (lastTab === 'Gallery' && label === 'Gallery');
+    b.classList.toggle('active', match);
+  });
+
+  // Aktifkan tab
+  document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active-tab'); });
+  document.getElementById('tab' + lastTab).classList.add('active-tab');
+  document.getElementById('topbarTitle').textContent = title;
+
+  isChatActive = (lastTab === 'Chat');
+  if (lastTab === 'Chat') loadChat();
+  if (lastTab === 'Notes') loadNotes();
+  if (lastTab === 'Gallery') loadGallery();
 }
 
 // ========== TABS ==========
@@ -149,23 +178,10 @@ function goTab(name, title, btn) {
   document.getElementById('tab' + name).classList.add('active-tab');
   btn.classList.add('active');
   document.getElementById('topbarTitle').textContent = title;
-  isChatActive = (name === 'Chat');
-  if (name === 'Chat') loadChat();
-  if (name === 'Notes') loadNotes();
-  if (name === 'Gallery') loadGallery();
-}
 
-function goTabById(name, title, navLabel) {
-  document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active-tab'); });
-  document.querySelectorAll('.nav-item').forEach(function(b) {
-    if (b.querySelector('span') && b.querySelector('span').textContent === navLabel) {
-      b.classList.add('active');
-    } else {
-      b.classList.remove('active');
-    }
-  });
-  document.getElementById('tab' + name).classList.add('active-tab');
-  document.getElementById('topbarTitle').textContent = title;
+  // Simpan tab aktif ke session
+  sessionStorage.setItem('activeTab', name);
+
   isChatActive = (name === 'Chat');
   if (name === 'Chat') loadChat();
   if (name === 'Notes') loadNotes();
@@ -175,17 +191,19 @@ function goTabById(name, title, navLabel) {
 // ========== HELPERS ==========
 function esc(s) {
   if (!s) return '';
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 function fmtDate(d) {
-  return new Date(d).toLocaleString('id-ID', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+  return new Date(d).toLocaleString('id-ID', {
+    day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit'
+  });
 }
 function fmtTime(d) {
   return new Date(d).toLocaleTimeString('id-ID', { hour:'2-digit', minute:'2-digit' });
 }
-function scrollChatBottom(smooth) {
-  var el = document.getElementById('chatList');
-  if (!el) return;
+function scrollBottom(el, smooth) {
   el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'instant' });
 }
 
@@ -200,26 +218,29 @@ async function loadNotes() {
   res.data.forEach(function(n) {
     var d = document.createElement('div');
     d.className = 'note-card';
+    // encode content untuk onclick attr
+    var safeTitle = esc(n.title);
+    var safeContent = esc(n.content || '');
     d.innerHTML =
       '<div class="note-header">' +
-        '<span class="note-ttl">' + esc(n.title) + '</span>' +
+        '<span class="note-ttl">' + safeTitle + '</span>' +
         '<div class="note-actions">' +
-          '<button title="Edit judul" onclick="openEditModal(\'' + n.id + '\',\'' + esc(n.title) + '\')">✏</button>' +
+          '<button title="Edit" onclick="openEditModal(\'' + n.id + '\',\'' + safeTitle + '\',\'' + safeContent + '\')">✏</button>' +
           '<button title="Hapus" onclick="delNote(\'' + n.id + '\')">✕</button>' +
         '</div>' +
       '</div>' +
-      (n.content ? '<p class="note-content">' + esc(n.content) + '</p>' : '') +
+      (n.content ? '<p class="note-content">' + safeContent + '</p>' : '') +
       '<span class="note-ts">' + fmtDate(n.created_at) + '</span>';
     el.appendChild(d);
   });
 }
 
-// Modal Tambah Catatan
+// Modal Tambah
 function openNoteModal() {
   document.getElementById('noteTitleInput').value = '';
   document.getElementById('noteBodyInput').value = '';
   document.getElementById('noteModal').classList.add('show');
-  setTimeout(function() { document.getElementById('noteTitleInput').focus(); }, 100);
+  setTimeout(function() { document.getElementById('noteTitleInput').focus(); }, 120);
 }
 
 function closeNoteModal(e) {
@@ -238,12 +259,14 @@ async function addNote() {
   loadNotes();
 }
 
-// Modal Edit Judul
-function openEditModal(id, oldTitle) {
+// Modal Edit — judul + isi
+function openEditModal(id, oldTitle, oldContent) {
   document.getElementById('editNoteId').value = id;
-  document.getElementById('editTitleInput').value = oldTitle;
+  // decode html entities kembali untuk ditampilkan di input
+  document.getElementById('editTitleInput').value = decodeHtml(oldTitle);
+  document.getElementById('editBodyInput').value = decodeHtml(oldContent);
   document.getElementById('editModal').classList.add('show');
-  setTimeout(function() { document.getElementById('editTitleInput').focus(); }, 100);
+  setTimeout(function() { document.getElementById('editTitleInput').focus(); }, 120);
 }
 
 function closeEditModal(e) {
@@ -254,11 +277,12 @@ function closeEditModal(e) {
 async function saveEditNote() {
   var id = document.getElementById('editNoteId').value;
   var newTitle = document.getElementById('editTitleInput').value.trim();
+  var newContent = document.getElementById('editBodyInput').value.trim();
   if (!newTitle) { toast('Judul tidak boleh kosong!', false); return; }
-  var res = await sb.from('notes').update({ title: newTitle }).eq('id', id);
-  if (res.error) { toast('Gagal edit', false); return; }
+  var res = await sb.from('notes').update({ title: newTitle, content: newContent }).eq('id', id);
+  if (res.error) { toast('Gagal edit: ' + res.error.message, false); return; }
   document.getElementById('editModal').classList.remove('show');
-  toast('Judul diubah ✓');
+  toast('Catatan diperbarui ✓');
   loadNotes();
 }
 
@@ -270,40 +294,14 @@ async function delNote(id) {
   loadNotes();
 }
 
-// ========== CHAT ==========
-var chatLoaded = false;
-
-async function loadChat(scrollSmooth) {
-  var el = document.getElementById('chatList');
-
-  // First load: tampilkan loading
-  if (!chatLoaded) {
-    el.innerHTML = '<p class="state-msg">Memuat...</p>';
-  }
-
-  var res = await sb.from('chat_messages').select('*').order('created_at', { ascending: true });
-  if (res.error) {
-    el.innerHTML = '<p class="state-msg err">Error: ' + res.error.message + '</p>';
-    return;
-  }
-
-  chatLoaded = true;
-
-  if (!res.data || !res.data.length) {
-    el.innerHTML = '<p class="state-msg">Belum ada pesan. Mulai chat!</p>';
-    return;
-  }
-
-  // Render semua pesan
-  el.innerHTML = '';
-  res.data.forEach(function(m) {
-    el.appendChild(buildMsgEl(m));
-  });
-
-  // Scroll ke bawah
-  scrollChatBottom(scrollSmooth || false);
+function decodeHtml(str) {
+  if (!str) return '';
+  return str
+    .replace(/&amp;/g,'&').replace(/&lt;/g,'<')
+    .replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;/g,"'");
 }
 
+// ========== CHAT ==========
 function buildMsgEl(m) {
   var isMe = currentAccount && m.sender_name === currentAccount.name;
   var d = document.createElement('div');
@@ -318,40 +316,102 @@ function buildMsgEl(m) {
   return d;
 }
 
+async function loadChat() {
+  var el = document.getElementById('chatList');
+  if (!chatLoaded) el.innerHTML = '<p class="state-msg">Memuat...</p>';
+
+  var res = await sb.from('chat_messages').select('*').order('created_at', { ascending: true });
+  if (res.error) { el.innerHTML = '<p class="state-msg err">Error: ' + res.error.message + '</p>'; return; }
+
+  chatLoaded = true;
+
+  if (!res.data || !res.data.length) {
+    el.innerHTML = '<p class="state-msg">Belum ada pesan. Mulai chat!</p>';
+    return;
+  }
+
+  el.innerHTML = '';
+  res.data.forEach(function(m) { el.appendChild(buildMsgEl(m)); });
+  scrollBottom(el, false);
+}
+
 async function sendMsg() {
   var input = document.getElementById('chatInput');
   var msg = input.value.trim();
   if (!msg || !currentAccount) return;
+
+  // Kosongkan input DULU sebelum insert
   input.value = '';
   input.focus();
 
+  // OPTIMISTIC: langsung append ke UI tanpa tunggu DB
+  var fakeMsg = {
+    message: msg,
+    sender_name: currentAccount.name,
+    sender_role: currentAccount.role,
+    user_id: uid,
+    created_at: new Date().toISOString()
+  };
+  var el = document.getElementById('chatList');
+  var placeholder = el.querySelector('.state-msg');
+  if (placeholder) el.innerHTML = '';
+  var msgEl = buildMsgEl(fakeMsg);
+  msgEl.setAttribute('data-pending', '1');
+  el.appendChild(msgEl);
+  scrollBottom(el, true);
+
+  // Kirim ke Supabase
   var res = await sb.from('chat_messages').insert([{
     message: msg,
     user_id: uid,
     sender_name: currentAccount.name,
     sender_role: currentAccount.role
   }]);
-  if (res.error) { toast('Gagal kirim', false); input.value = msg; return; }
-  // Realtime akan otomatis append
+
+  if (res.error) {
+    // Hapus optimistic message jika gagal
+    var pending = el.querySelector('[data-pending="1"]');
+    if (pending) pending.remove();
+    toast('Gagal kirim', false);
+    input.value = msg;
+    return;
+  }
+
+  // Hapus flag pending (realtime akan handle deduplikasi)
+  var pending = el.querySelector('[data-pending="1"]');
+  if (pending) pending.removeAttribute('data-pending');
 }
 
-// ========== REALTIME CHAT — append tanpa reload ulang ==========
+// ========== REALTIME — append tanpa reload ==========
 function setupRealtime() {
-  if (chatChannel) sb.removeChannel(chatChannel);
-  chatChannel = sb.channel('chat_room')
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, function(payload) {
-      if (!isChatActive) return;
-      var el = document.getElementById('chatList');
-      // Hapus placeholder "belum ada pesan" kalau ada
-      var placeholder = el.querySelector('.state-msg');
-      if (placeholder) el.innerHTML = '';
-      // Append pesan baru
-      var newMsg = buildMsgEl(payload.new);
-      el.appendChild(newMsg);
-      // Cek apakah user sudah di dekat bawah, kalau ya scroll smooth
-      var distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-      scrollChatBottom(distFromBottom < 200);
-    })
+  if (chatChannel) { sb.removeChannel(chatChannel); chatChannel = null; }
+
+  chatChannel = sb.channel('chat_room_' + Date.now())
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' },
+      function(payload) {
+        if (!isChatActive) return;
+        var el = document.getElementById('chatList');
+
+        // Jika pesan dari diri sendiri, cek apakah sudah ada optimistic message
+        var isMe = currentAccount && payload.new.sender_name === currentAccount.name;
+        if (isMe) {
+          // Sudah ada optimistic bubble, tidak perlu tambah lagi
+          var pending = el.querySelector('[data-pending]');
+          if (pending) return; // sudah di-handle
+        }
+
+        // Hapus placeholder jika ada
+        var placeholder = el.querySelector('.state-msg');
+        if (placeholder) el.innerHTML = '';
+
+        // Append pesan baru
+        el.appendChild(buildMsgEl(payload.new));
+
+        // Scroll smooth jika dekat bawah
+        var distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+        scrollBottom(el, distFromBottom < 200);
+      }
+    )
     .subscribe();
 }
 
@@ -379,16 +439,45 @@ async function loadGallery() {
 }
 
 async function doUpload(input) {
-  if (!currentAccount || currentAccount.role !== 'admin') { toast('Hanya admin yang bisa upload', false); return; }
+  if (!currentAccount || currentAccount.role !== 'admin') {
+    toast('Hanya admin yang bisa upload', false); return;
+  }
   var file = input.files[0];
   if (!file) return;
+
   toast('Mengupload...');
-  var name = Date.now() + '_' + file.name.replace(/\s+/g, '_');
-  var upRes = await sb.storage.from('gallery').upload(name, file);
-  if (upRes.error) { toast('Upload gagal: ' + upRes.error.message, false); return; }
+
+  // Upload ke storage
+  var ext = file.name.split('.').pop();
+  var name = Date.now() + '_' + Math.random().toString(36).slice(2,6) + '.' + ext;
+
+  var upRes = await sb.storage.from('gallery').upload(name, file, {
+    cacheControl: '3600',
+    upsert: false
+  });
+
+  if (upRes.error) {
+    toast('Upload gagal: ' + upRes.error.message, false);
+    input.value = '';
+    return;
+  }
+
+  // Ambil public URL
   var pub = sb.storage.from('gallery').getPublicUrl(name);
-  var dbRes = await sb.from('gallery').insert([{ file_url: pub.data.publicUrl, file_name: name }]);
-  if (dbRes.error) { toast('Simpan gagal', false); return; }
+  var fileUrl = pub.data.publicUrl;
+
+  // Simpan ke tabel gallery
+  var dbRes = await sb.from('gallery').insert([{
+    file_url: fileUrl,
+    file_name: name
+  }]);
+
+  if (dbRes.error) {
+    toast('Gagal simpan ke DB: ' + dbRes.error.message, false);
+    input.value = '';
+    return;
+  }
+
   toast('Berhasil diupload ✓');
   input.value = '';
   loadGallery();
@@ -413,6 +502,3 @@ function closeLightbox() {
   document.getElementById('lightbox').classList.remove('show');
   document.getElementById('lightboxImg').src = '';
 }
-
-// ========== SETUP REALTIME on load ==========
-setupRealtime();
