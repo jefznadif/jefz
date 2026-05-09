@@ -15,13 +15,12 @@ let dark = localStorage.getItem('theme') === 'dark';
 let uid = localStorage.getItem('uid');
 if (!uid) { uid = 'u_' + Math.random().toString(36).slice(2,10); localStorage.setItem('uid', uid); }
 
-// Chat state
+// Chat
 let chatChannel = null;
 let isChatActive = false;
 let chatLoaded = false;
-let lastMsgId = null;      // id pesan terakhir untuk polling
-let pollTimer = null;       // interval polling
-let realtimeOk = false;     // apakah realtime aktif
+let seenMsgIds = new Set(); // track semua id yg sudah dirender
+let pollTimer = null;
 
 // ========== BOOT ==========
 window.onload = function () {
@@ -69,14 +68,11 @@ function selectAccount(name, role) {
   pendingAccount = { name: name, role: role, color: ACCOUNTS[name] ? ACCOUNTS[name].color : '#3d5afe' };
   document.getElementById('stepAccount').style.display = 'none';
   document.getElementById('stepPin').style.display = 'block';
-  var initial = name.charAt(0).toUpperCase();
   document.getElementById('selectedAccInfo').innerHTML =
     '<div class="sel-acc">' +
-      '<div class="acc-avatar-lg" style="background:' + pendingAccount.color + '">' + initial + '</div>' +
-      '<div>' +
-        '<div class="sel-name">' + name + '</div>' +
-        '<div class="sel-role">' + (role === 'admin' ? '👑 Admin' : '👤 User') + '</div>' +
-      '</div>' +
+      '<div class="acc-avatar-lg" style="background:' + pendingAccount.color + '">' + name.charAt(0).toUpperCase() + '</div>' +
+      '<div><div class="sel-name">' + name + '</div>' +
+      '<div class="sel-role">' + (role === 'admin' ? '👑 Admin' : '👤 User') + '</div></div>' +
     '</div>';
   setTimeout(function () { document.getElementById('pinInput').focus(); }, 100);
   document.getElementById('pinInput').onkeydown = function(e) { if (e.key === 'Enter') doLogin(); };
@@ -116,12 +112,12 @@ function doLogin() {
 
 function doLogout() {
   if (!confirm('Yakin mau logout?')) return;
-  stopChat();
+  stopChatSync();
   sessionStorage.clear();
   currentAccount = null;
   pendingAccount = null;
   chatLoaded = false;
-  lastMsgId = null;
+  seenMsgIds.clear();
   document.getElementById('stepPin').style.display = 'none';
   document.getElementById('stepAccount').style.display = 'block';
   document.getElementById('pinInput').value = '';
@@ -130,9 +126,9 @@ function doLogout() {
   document.getElementById('loginPage').className = 'page active';
 }
 
-function stopChat() {
+function stopChatSync() {
   isChatActive = false;
-  if (chatChannel) { sb.removeChannel(chatChannel); chatChannel = null; }
+  if (chatChannel) { try { sb.removeChannel(chatChannel); } catch(e){} chatChannel = null; }
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
 }
 
@@ -140,27 +136,21 @@ function stopChat() {
 function showDash() {
   document.getElementById('loginPage').className = 'page';
   document.getElementById('dashPage').className = 'page active';
-
-  var initial = currentAccount.name.charAt(0).toUpperCase();
   var avatarEl = document.getElementById('topbarAvatar');
-  avatarEl.textContent = initial;
+  avatarEl.textContent = currentAccount.name.charAt(0).toUpperCase();
   avatarEl.style.background = currentAccount.color;
   document.getElementById('topbarUser').textContent =
     currentAccount.name + (currentAccount.role === 'admin' ? ' 👑' : ' 👤');
-
   var ul = document.getElementById('uploadLabel');
   if (ul) ul.style.display = currentAccount.role === 'admin' ? 'inline-block' : 'none';
-
   var lastTab = sessionStorage.getItem('activeTab') || 'Chat';
   activateTab(lastTab);
 }
 
 // ========== TABS ==========
 function goTab(name, title, btn) {
-  document.querySelectorAll('.nav-item').forEach(function(b) { b.classList.remove('active'); });
-  btn.classList.add('active');
-  activateTab(name);
   sessionStorage.setItem('activeTab', name);
+  activateTab(name);
 }
 
 function activateTab(name) {
@@ -168,13 +158,13 @@ function activateTab(name) {
   document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active-tab'); });
   document.querySelectorAll('.nav-item').forEach(function(b) {
     var lbl = b.querySelector('span') ? b.querySelector('span').textContent : '';
-    var match = (name==='Chat'&&lbl==='Chat') || (name==='Notes'&&lbl==='Catatan') || (name==='Gallery'&&lbl==='Gallery');
-    b.classList.toggle('active', match);
+    b.classList.toggle('active',
+      (name==='Chat'&&lbl==='Chat') || (name==='Notes'&&lbl==='Catatan') || (name==='Gallery'&&lbl==='Gallery')
+    );
   });
   document.getElementById('tab' + name).classList.add('active-tab');
   document.getElementById('topbarTitle').textContent = titles[name] || name;
 
-  // Stop polling kalau pindah dari chat
   if (name !== 'Chat') {
     isChatActive = false;
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
@@ -182,7 +172,7 @@ function activateTab(name) {
     isChatActive = true;
   }
 
-  if (name === 'Chat') loadChatFull();
+  if (name === 'Chat') initChat();
   if (name === 'Notes') loadNotes();
   if (name === 'Gallery') loadGallery();
 }
@@ -204,29 +194,30 @@ function fmtTime(d) {
 }
 function scrollBottom(el, smooth) {
   if (!el) return;
-  el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'instant' });
+  requestAnimationFrame(function() {
+    el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'instant' });
+  });
 }
 
 // ========== NOTES ==========
 async function loadNotes() {
   var el = document.getElementById('notesList');
   el.innerHTML = '<p class="state-msg">Memuat...</p>';
-  // ascending = terlama di atas, terbaru di bawah
   var res = await sb.from('notes').select('*').order('created_at', { ascending: true });
   if (res.error) { el.innerHTML = '<p class="state-msg err">Error: ' + res.error.message + '</p>'; return; }
   if (!res.data || !res.data.length) { el.innerHTML = '<p class="state-msg">Belum ada catatan.</p>'; return; }
   el.innerHTML = '';
   res.data.forEach(function(n) {
-    var d = document.createElement('div');
-    d.className = 'note-card';
-    d.dataset.id = n.id;
+    var isAdmin = currentAccount && currentAccount.role === 'admin';
+    var isOwner = currentAccount && n.author === currentAccount.name;
+    var canEdit = isAdmin || isOwner;
 
-    // Preview isi (maks 60 karakter)
     var preview = (n.content || '').replace(/\n/g,' ').trim();
-    if (preview.length > 60) preview = preview.slice(0, 60) + '…';
-
+    if (preview.length > 60) preview = preview.slice(0,60) + '…';
     var authorColor = n.author === "Jef'z" ? '#3d5afe' : '#e91e8c';
 
+    var d = document.createElement('div');
+    d.className = 'note-card';
     d.innerHTML =
       '<div class="note-summary" onclick="openReadModal(\'' + n.id + '\')">' +
         '<div class="note-sum-main">' +
@@ -239,21 +230,17 @@ async function loadNotes() {
           '<span class="note-chevron">›</span>' +
         '</div>' +
       '</div>' +
-      '<div class="note-action-row">' +
-        '<button class="note-act-btn edit-btn" onclick="openEditModal(\'' + n.id + '\',\'' + esc(n.title) + '\',\'' + esc(n.content||'') + '\')">✏ Edit</button>' +
-        '<button class="note-act-btn del-btn" onclick="delNote(\'' + n.id + '\')">✕ Hapus</button>' +
-      '</div>';
+      (canEdit ?
+        '<div class="note-action-row">' +
+          '<button class="note-act-btn edit-btn" onclick="openEditModal(\'' + n.id + '\',\'' + esc(n.title) + '\',\'' + esc(n.content||'') + '\')">✏ Edit</button>' +
+          '<button class="note-act-btn del-btn" onclick="delNote(\'' + n.id + '\')">✕ Hapus</button>' +
+        '</div>' : '');
     el.appendChild(d);
   });
-
-  // Scroll ke bawah agar catatan terbaru kelihatan
   setTimeout(function() { el.scrollTop = el.scrollHeight; }, 50);
 }
 
-// Modal Baca Full
 function openReadModal(id) {
-  // Cari data dari DOM (sudah dirender)
-  // Ambil dari DB supaya akurat
   sb.from('notes').select('*').eq('id', id).single().then(function(res) {
     if (res.error || !res.data) return;
     var n = res.data;
@@ -266,20 +253,17 @@ function openReadModal(id) {
     document.getElementById('readModal').classList.add('show');
   });
 }
-
 function closeReadModal(e) {
   if (e && e.target !== document.getElementById('readModal')) return;
   document.getElementById('readModal').classList.remove('show');
 }
 
-// Modal Tambah
 function openNoteModal() {
   document.getElementById('noteTitleInput').value = '';
   document.getElementById('noteBodyInput').value = '';
   document.getElementById('noteModal').classList.add('show');
   setTimeout(function() { document.getElementById('noteTitleInput').focus(); }, 120);
 }
-
 function closeNoteModal(e) {
   if (e && e.target !== document.getElementById('noteModal')) return;
   document.getElementById('noteModal').classList.remove('show');
@@ -289,18 +273,13 @@ async function addNote() {
   var title = document.getElementById('noteTitleInput').value.trim();
   var content = document.getElementById('noteBodyInput').value.trim();
   if (!title) { toast('Judul tidak boleh kosong!', false); return; }
-  var res = await sb.from('notes').insert([{
-    title: title,
-    content: content,
-    author: currentAccount ? currentAccount.name : ''
-  }]);
+  var res = await sb.from('notes').insert([{ title: title, content: content, author: currentAccount ? currentAccount.name : '' }]);
   if (res.error) { toast('Gagal: ' + res.error.message, false); return; }
   document.getElementById('noteModal').classList.remove('show');
   toast('Catatan ditambahkan ✓');
   loadNotes();
 }
 
-// Modal Edit
 function openEditModal(id, oldTitle, oldContent) {
   document.getElementById('editNoteId').value = id;
   document.getElementById('editTitleInput').value = decodeHtml(oldTitle);
@@ -308,7 +287,6 @@ function openEditModal(id, oldTitle, oldContent) {
   document.getElementById('editModal').classList.add('show');
   setTimeout(function() { document.getElementById('editTitleInput').focus(); }, 120);
 }
-
 function closeEditModal(e) {
   if (e && e.target !== document.getElementById('editModal')) return;
   document.getElementById('editModal').classList.remove('show');
@@ -334,12 +312,12 @@ async function delNote(id) {
   loadNotes();
 }
 
-// ========== CHAT ==========
+// ========== CHAT — ULTRA RESPONSIVE ==========
 function buildMsgEl(m) {
   var isMe = currentAccount && m.sender_name === currentAccount.name;
   var d = document.createElement('div');
   d.className = 'msg-row ' + (isMe ? 'mine' : 'theirs');
-  if (m.id) d.dataset.msgId = m.id;
+  if (m.id) d.dataset.msgId = String(m.id);
   var nameColor = m.sender_name === "Jef'z" ? '#3d5afe' : '#e91e8c';
   var roleTag = m.sender_role === 'admin' ? ' 👑' : '';
   d.innerHTML =
@@ -350,113 +328,98 @@ function buildMsgEl(m) {
   return d;
 }
 
-// Load semua chat dari awal
-async function loadChatFull() {
+// Append satu pesan baru ke UI, skip kalau sudah ada
+function appendMsg(m, smooth) {
   var el = document.getElementById('chatList');
-  if (!chatLoaded) el.innerHTML = '<p class="state-msg">Memuat...</p>';
+  if (!el) return;
+  var id = String(m.id || '');
+  if (id && seenMsgIds.has(id)) return; // deduplicate
+  if (id) seenMsgIds.add(id);
 
+  // Hapus placeholder
+  var ph = el.querySelector('.state-msg');
+  if (ph) el.innerHTML = '';
+
+  el.appendChild(buildMsgEl(m));
+  var dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+  scrollBottom(el, smooth && dist < 300);
+}
+
+async function initChat() {
+  isChatActive = true;
+  chatLoaded = false;
+  seenMsgIds.clear();
+  var el = document.getElementById('chatList');
+  el.innerHTML = '<p class="state-msg">Memuat...</p>';
+
+  // Load semua pesan
   var res = await sb.from('chat_messages').select('*').order('created_at', { ascending: true });
   if (res.error) { el.innerHTML = '<p class="state-msg err">Error: ' + res.error.message + '</p>'; return; }
 
-  chatLoaded = true;
   el.innerHTML = '';
+  chatLoaded = true;
 
   if (!res.data || !res.data.length) {
     el.innerHTML = '<p class="state-msg">Belum ada pesan. Mulai chat!</p>';
   } else {
-    res.data.forEach(function(m) { el.appendChild(buildMsgEl(m)); });
-    // Simpan id pesan terakhir
-    lastMsgId = res.data[res.data.length - 1].id;
+    res.data.forEach(function(m) {
+      if (m.id) seenMsgIds.add(String(m.id));
+      el.appendChild(buildMsgEl(m));
+    });
     scrollBottom(el, false);
   }
 
-  // Setup realtime + polling fallback
-  setupChatSync();
+  // Start sync setelah data loaded
+  startChatSync();
 }
 
-// Cek pesan baru saja (untuk polling)
-async function checkNewMsgs() {
-  if (!isChatActive || !chatLoaded) return;
-  var el = document.getElementById('chatList');
-
-  var query = sb.from('chat_messages').select('*').order('created_at', { ascending: true });
-  if (lastMsgId) query = query.gt('id', lastMsgId);
-
-  var res = await query;
-  if (res.error || !res.data || !res.data.length) return;
-
-  // Hapus placeholder kalau ada
-  var placeholder = el.querySelector('.state-msg');
-  if (placeholder) el.innerHTML = '';
-
-  res.data.forEach(function(m) {
-    // Hindari duplikasi
-    if (el.querySelector('[data-msg-id="' + m.id + '"]')) return;
-    // Hapus optimistic bubble kalau ada
-    var pending = el.querySelector('[data-pending="1"]');
-    if (pending && currentAccount && m.sender_name === currentAccount.name) {
-      pending.dataset.msgId = m.id;
-      pending.removeAttribute('data-pending');
-      return;
-    }
-    el.appendChild(buildMsgEl(m));
-    var distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    scrollBottom(el, distFromBottom < 250);
-  });
-
-  lastMsgId = res.data[res.data.length - 1].id;
-}
-
-function setupChatSync() {
+function startChatSync() {
   // Bersihkan yang lama
-  if (chatChannel) { sb.removeChannel(chatChannel); chatChannel = null; }
+  if (chatChannel) { try { sb.removeChannel(chatChannel); } catch(e){} chatChannel = null; }
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
 
-  realtimeOk = false;
-
-  // ---- REALTIME ----
-  chatChannel = sb.channel('chat_' + Date.now())
-    .on('postgres_changes',
-      { event: 'INSERT', schema: 'public', table: 'chat_messages' },
-      function(payload) {
-        if (!isChatActive) return;
-        realtimeOk = true; // Realtime aktif
+  // ======== REALTIME — Primary ========
+  // Buat channel fresh setiap kali
+  chatChannel = sb.channel('chat_live_' + Date.now(), {
+    config: { broadcast: { self: false } }
+  })
+  .on('postgres_changes',
+    { event: 'INSERT', schema: 'public', table: 'chat_messages' },
+    function(payload) {
+      if (!isChatActive || !payload.new) return;
+      // Kalau ini pesan dari diri sendiri & ada optimistic bubble, replace
+      if (currentAccount && payload.new.sender_name === currentAccount.name) {
         var el = document.getElementById('chatList');
-        var m = payload.new;
-
-        // Hindari duplikasi
-        if (m.id && el.querySelector('[data-msg-id="' + m.id + '"]')) return;
-
-        // Kalau pesan dari diri sendiri & ada optimistic bubble
-        if (currentAccount && m.sender_name === currentAccount.name) {
-          var pending = el.querySelector('[data-pending="1"]');
-          if (pending) {
-            pending.dataset.msgId = m.id;
-            pending.removeAttribute('data-pending');
-            lastMsgId = m.id;
-            return;
-          }
+        var pend = el.querySelector('[data-pending]');
+        if (pend) {
+          // Update id di optimistic bubble
+          pend.dataset.msgId = String(payload.new.id);
+          seenMsgIds.add(String(payload.new.id));
+          pend.removeAttribute('data-pending');
+          return;
         }
-
-        var placeholder = el.querySelector('.state-msg');
-        if (placeholder) el.innerHTML = '';
-
-        el.appendChild(buildMsgEl(m));
-        lastMsgId = m.id;
-        var distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-        scrollBottom(el, distFromBottom < 250);
       }
-    )
-    .subscribe(function(status) {
-      if (status === 'SUBSCRIBED') realtimeOk = true;
-    });
+      appendMsg(payload.new, true);
+    }
+  )
+  .subscribe();
 
-  // ---- POLLING FALLBACK (setiap 5 detik) ----
-  // Selalu jalan sebagai jaring pengaman, tidak masalah double karena ada dedup
-  pollTimer = setInterval(function() {
-    if (!isChatActive) return;
-    checkNewMsgs();
-  }, 5000);
+  // ======== POLLING — Fallback setiap 3 detik ========
+  pollTimer = setInterval(async function() {
+    if (!isChatActive || !chatLoaded) return;
+    // Ambil pesan yang belum ada di seenMsgIds
+    // Pakai query berdasarkan jumlah — cukup ambil 20 terbaru dan cek
+    var res = await sb.from('chat_messages')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(20);
+    if (res.error || !res.data) return;
+    // Balik urutan (terlama dulu)
+    var msgs = res.data.slice().reverse();
+    msgs.forEach(function(m) {
+      appendMsg(m, false);
+    });
+  }, 3000);
 }
 
 async function sendMsg() {
@@ -467,19 +430,20 @@ async function sendMsg() {
   input.value = '';
   input.focus();
 
-  // Optimistic UI — tampilkan langsung
+  // Optimistic UI langsung
   var fakeMsg = {
     message: msg,
     sender_name: currentAccount.name,
     sender_role: currentAccount.role,
     user_id: uid,
     created_at: new Date().toISOString()
+    // id sengaja tidak ada supaya tidak masuk seenMsgIds
   };
   var el = document.getElementById('chatList');
-  var placeholder = el.querySelector('.state-msg');
-  if (placeholder) el.innerHTML = '';
+  var ph = el.querySelector('.state-msg');
+  if (ph) el.innerHTML = '';
   var msgEl = buildMsgEl(fakeMsg);
-  msgEl.setAttribute('data-pending', '1');
+  msgEl.dataset.pending = '1';
   el.appendChild(msgEl);
   scrollBottom(el, true);
 
@@ -492,17 +456,26 @@ async function sendMsg() {
   }]);
 
   if (res.error) {
-    var pend = el.querySelector('[data-pending="1"]');
+    var pend = el.querySelector('[data-pending]');
     if (pend) pend.remove();
     toast('Gagal kirim', false);
     input.value = msg;
     return;
   }
 
-  // Jika realtime tidak aktif, langsung poll untuk konfirmasi
-  if (!realtimeOk) {
-    setTimeout(checkNewMsgs, 500);
-  }
+  // Insert berhasil — kalau realtime belum fire dalam 1 detik, poll manual
+  setTimeout(async function() {
+    var pend = el.querySelector('[data-pending]');
+    if (!pend) return; // sudah dihandle realtime
+    // Realtime belum datang, ambil dari DB
+    var r = await sb.from('chat_messages')
+      .select('*').order('created_at', { ascending: false }).limit(1);
+    if (r.data && r.data[0]) {
+      pend.dataset.msgId = String(r.data[0].id);
+      seenMsgIds.add(String(r.data[0].id));
+      pend.removeAttribute('data-pending');
+    }
+  }, 1200);
 }
 
 // ========== GALLERY ==========
