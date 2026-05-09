@@ -139,10 +139,11 @@
 <div id="editModal" class="modal-overlay" onclick="closeEditModal(event)">
   <div class="modal-box">
     <div class="modal-header">
-      <span class="modal-title">Edit Judul</span>
+      <span class="modal-title">Edit Catatan</span>
       <button class="modal-close" onclick="closeEditModal()">✕</button>
     </div>
-    <input type="text" id="editTitleInput" class="field" placeholder="Judul baru..."/>
+    <input type="text" id="editTitleInput" class="field" placeholder="Judul..."/>
+    <textarea id="editBodyInput" class="field field-ta" rows="4" placeholder="Isi catatan..."></textarea>
     <input type="hidden" id="editNoteId"/>
     <button class="btn-act" onclick="saveEditNote()">Simpan</button>
   </div>
