@@ -1,33 +1,30 @@
 // ========== SUPABASE ==========
-// Paste anon key kamu dari: Supabase → Project Settings → API → anon public
 const SB_URL = 'https://cxlvnwbfdbymdoddjqwn.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN4bHZud2JmZGJ5bWRvZGRqcXduIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5MDUwOTMsImV4cCI6MjA5MzQ4MTA5M30.9jGx6eY7qzvQzW65xD7gVOMP1YZQzKjULginFNwSV-k';
 const sb = window.supabase.createClient(SB_URL, SB_KEY);
 
-// ========== PIN — dicek lokal, tidak perlu query DB ==========
-const CORRECT_PIN = 'zz';
+// ========== ACCOUNTS ==========
+const ACCOUNTS = {
+  'Ndifaa': { pin: '1408', role: 'user',  color: '#e91e8c' },
+  "Jef'z":  { pin: 'zz',   role: 'admin', color: '#3d5afe' }
+};
 
 // ========== STATE ==========
-let uid = localStorage.getItem('uid');
-if (!uid) {
-  uid = 'u_' + Math.random().toString(36).slice(2, 10);
-  localStorage.setItem('uid', uid);
-}
+let currentAccount = null; // { name, role, color }
 let dark = localStorage.getItem('theme') === 'dark';
+let uid = localStorage.getItem('uid');
+if (!uid) { uid = 'u_' + Math.random().toString(36).slice(2,10); localStorage.setItem('uid', uid); }
 
 // ========== BOOT ==========
 window.onload = function () {
   applyTheme();
   var auth = sessionStorage.getItem('auth');
+  var accName = sessionStorage.getItem('accName');
   var t = sessionStorage.getItem('authTime');
-  if (auth && t && (Date.now() - parseInt(t)) < 3600000) {
+  if (auth && accName && t && (Date.now() - parseInt(t)) < 3600000) {
+    currentAccount = { name: accName, role: sessionStorage.getItem('accRole'), color: ACCOUNTS[accName] ? ACCOUNTS[accName].color : '#3d5afe' };
     showDash();
-  } else {
-    document.getElementById('pinInput').focus();
   }
-  document.getElementById('pinInput').addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') doLogin();
-  });
 };
 
 // ========== THEME ==========
@@ -36,7 +33,6 @@ function applyTheme() {
   var btn = document.getElementById('themeBtn');
   if (btn) btn.textContent = dark ? '☀️' : '🌙';
 }
-
 function toggleTheme() {
   dark = !dark;
   localStorage.setItem('theme', dark ? 'dark' : 'light');
@@ -54,20 +50,55 @@ function toast(msg, ok) {
   toastTimer = setTimeout(function () { el.className = 'toast'; }, 2800);
 }
 
-// ========== LOGIN ==========
+// ========== LOGIN FLOW ==========
+var pendingAccount = null;
+
+function selectAccount(name, role) {
+  pendingAccount = { name: name, role: role, color: ACCOUNTS[name] ? ACCOUNTS[name].color : '#3d5afe' };
+  // Tampilkan step PIN
+  document.getElementById('stepAccount').style.display = 'none';
+  document.getElementById('stepPin').style.display = 'block';
+  // Isi info akun yang dipilih
+  var initial = name.charAt(0).toUpperCase();
+  var color = pendingAccount.color;
+  document.getElementById('selectedAccInfo').innerHTML =
+    '<div class="sel-acc">' +
+      '<div class="acc-avatar-lg" style="background:' + color + '">' + initial + '</div>' +
+      '<div>' +
+        '<div class="sel-name">' + name + '</div>' +
+        '<div class="sel-role">' + (role === 'admin' ? '👑 Admin' : '👤 User') + '</div>' +
+      '</div>' +
+    '</div>';
+  setTimeout(function () { document.getElementById('pinInput').focus(); }, 100);
+  document.getElementById('pinInput').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') doLogin();
+  });
+}
+
+function backToAccount() {
+  pendingAccount = null;
+  document.getElementById('stepPin').style.display = 'none';
+  document.getElementById('stepAccount').style.display = 'block';
+  document.getElementById('pinInput').value = '';
+  document.getElementById('loginErr').textContent = '';
+}
+
 function doLogin() {
   var pin = document.getElementById('pinInput').value;
   var errEl = document.getElementById('loginErr');
   errEl.textContent = '';
+  if (!pin) { errEl.textContent = 'Masukkan PIN terlebih dahulu'; return; }
+  if (!pendingAccount) return;
 
-  if (!pin) {
-    errEl.textContent = 'Masukkan PIN terlebih dahulu';
-    return;
-  }
+  var acc = ACCOUNTS[pendingAccount.name];
+  if (!acc) { errEl.textContent = 'Akun tidak ditemukan'; return; }
 
-  if (pin === CORRECT_PIN) {
+  if (pin === acc.pin) {
+    currentAccount = pendingAccount;
     sessionStorage.setItem('auth', '1');
     sessionStorage.setItem('authTime', Date.now().toString());
+    sessionStorage.setItem('accName', currentAccount.name);
+    sessionStorage.setItem('accRole', currentAccount.role);
     document.getElementById('pinInput').value = '';
     showDash();
   } else {
@@ -77,20 +108,45 @@ function doLogin() {
   }
 }
 
-// ========== LOGOUT ==========
 function doLogout() {
   if (!confirm('Yakin mau logout?')) return;
-  sessionStorage.removeItem('auth');
-  sessionStorage.removeItem('authTime');
+  sessionStorage.clear();
+  currentAccount = null;
+  pendingAccount = null;
+  // Reset ke step pilih akun
+  document.getElementById('stepPin').style.display = 'none';
+  document.getElementById('stepAccount').style.display = 'block';
+  document.getElementById('pinInput').value = '';
+  document.getElementById('loginErr').textContent = '';
   document.getElementById('dashPage').className = 'page';
   document.getElementById('loginPage').className = 'page active';
-  setTimeout(function () { document.getElementById('pinInput').focus(); }, 150);
 }
 
-// ========== PAGES ==========
+// ========== SHOW DASH ==========
 function showDash() {
   document.getElementById('loginPage').className = 'page';
   document.getElementById('dashPage').className = 'page active';
+
+  // Set topbar info
+  var initial = currentAccount.name.charAt(0).toUpperCase();
+  var avatarEl = document.getElementById('topbarAvatar');
+  avatarEl.textContent = initial;
+  avatarEl.style.background = currentAccount.color;
+  document.getElementById('topbarUser').textContent = currentAccount.name + (currentAccount.role === 'admin' ? ' 👑' : '');
+  document.getElementById('topbarTitle').textContent = 'Catatan';
+
+  // Admin bisa upload, user tidak
+  var uploadLabel = document.getElementById('uploadLabel');
+  if (uploadLabel) {
+    uploadLabel.style.display = currentAccount.role === 'admin' ? 'inline-block' : 'none';
+  }
+
+  // Reset tab ke notes
+  document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active-tab'); });
+  document.querySelectorAll('.nav-item').forEach(function(b) { b.classList.remove('active'); });
+  document.getElementById('tabNotes').classList.add('active-tab');
+  document.querySelector('.nav-item').classList.add('active');
+
   loadNotes();
 }
 
@@ -109,20 +165,13 @@ function goTab(name, title, btn) {
 // ========== HELPERS ==========
 function esc(s) {
   if (!s) return '';
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
-
 function fmtDate(d) {
-  return new Date(d).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return new Date(d).toLocaleString('id-ID', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
 }
-
 function fmtTime(d) {
-  return new Date(d).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  return new Date(d).toLocaleTimeString('id-ID', { hour:'2-digit', minute:'2-digit' });
 }
 
 // ========== NOTES ==========
@@ -134,23 +183,30 @@ async function loadNotes() {
   if (!res.data || !res.data.length) { el.innerHTML = '<p class="state-msg">Belum ada catatan.</p>'; return; }
   el.innerHTML = '';
   res.data.forEach(function (n) {
+    var isAdmin = currentAccount && currentAccount.role === 'admin';
     var d = document.createElement('div');
     d.className = 'note-card';
     d.innerHTML =
       '<div class="note-header">' +
         '<span class="note-ttl">' + esc(n.title) + '</span>' +
-        '<div class="note-actions">' +
-          '<button onclick="editNote(\'' + n.id + '\',\'' + esc(n.title) + '\',\'' + esc(n.content || '') + '\')">✏</button>' +
-          '<button onclick="delNote(\'' + n.id + '\')">✕</button>' +
-        '</div>' +
+        (isAdmin ?
+          '<div class="note-actions">' +
+            '<button onclick="editNote(\'' + n.id + '\',\'' + esc(n.title) + '\',\'' + esc(n.content||'') + '\')">✏</button>' +
+            '<button onclick="delNote(\'' + n.id + '\')">✕</button>' +
+          '</div>' : '') +
       '</div>' +
       (n.content ? '<p class="note-content">' + esc(n.content) + '</p>' : '') +
       '<span class="note-ts">' + fmtDate(n.created_at) + '</span>';
     el.appendChild(d);
   });
+
+  // Sembunyikan form tambah catatan untuk user
+  var form = document.querySelector('.note-form');
+  if (form) form.style.display = currentAccount && currentAccount.role === 'admin' ? 'flex' : 'none';
 }
 
 async function addNote() {
+  if (!currentAccount || currentAccount.role !== 'admin') { toast('Hanya admin yang bisa menambah catatan', false); return; }
   var title = document.getElementById('noteTitle').value.trim();
   var content = document.getElementById('noteBody').value.trim();
   if (!title) { toast('Judul tidak boleh kosong!', false); return; }
@@ -163,6 +219,7 @@ async function addNote() {
 }
 
 async function editNote(id, oldT, oldC) {
+  if (!currentAccount || currentAccount.role !== 'admin') return;
   var newT = prompt('Edit judul:', oldT);
   if (newT === null) return;
   var newC = prompt('Edit isi:', oldC);
@@ -174,6 +231,7 @@ async function editNote(id, oldT, oldC) {
 }
 
 async function delNote(id) {
+  if (!currentAccount || currentAccount.role !== 'admin') return;
   if (!confirm('Hapus catatan ini?')) return;
   var res = await sb.from('notes').delete().eq('id', id);
   if (res.error) { toast('Gagal hapus', false); return; }
@@ -190,9 +248,17 @@ async function loadChat() {
   if (!res.data || !res.data.length) { el.innerHTML = '<p class="state-msg">Belum ada pesan.</p>'; return; }
   el.innerHTML = '';
   res.data.forEach(function (m) {
+    var isMe = m.sender_name === (currentAccount ? currentAccount.name : '');
     var d = document.createElement('div');
-    d.className = 'msg-row ' + (m.user_id === uid ? 'mine' : 'theirs');
-    d.innerHTML = '<div class="bubble">' + esc(m.message) + '<span class="btime">' + fmtTime(m.created_at) + '</span></div>';
+    d.className = 'msg-row ' + (isMe ? 'mine' : 'theirs');
+    // Warna nama berdasarkan sender
+    var nameColor = m.sender_name === "Jef'z" ? '#3d5afe' : '#e91e8c';
+    var roleTag = m.sender_role === 'admin' ? ' 👑' : '';
+    d.innerHTML =
+      '<div class="msg-block">' +
+        (!isMe ? '<span class="msg-sender" style="color:' + nameColor + '">' + esc(m.sender_name) + roleTag + '</span>' : '') +
+        '<div class="bubble">' + esc(m.message) + '<span class="btime">' + fmtTime(m.created_at) + '</span></div>' +
+      '</div>';
     el.appendChild(d);
   });
   el.scrollTop = el.scrollHeight;
@@ -201,9 +267,14 @@ async function loadChat() {
 async function sendMsg() {
   var input = document.getElementById('chatInput');
   var msg = input.value.trim();
-  if (!msg) return;
+  if (!msg || !currentAccount) return;
   input.value = '';
-  var res = await sb.from('chat_messages').insert([{ message: msg, user_id: uid }]);
+  var res = await sb.from('chat_messages').insert([{
+    message: msg,
+    user_id: uid,
+    sender_name: currentAccount.name,
+    sender_role: currentAccount.role
+  }]);
   if (res.error) { toast('Gagal kirim', false); return; }
   loadChat();
 }
@@ -224,6 +295,7 @@ async function loadGallery() {
   if (res.error) { el.innerHTML = '<p class="state-msg err">Error: ' + res.error.message + '</p>'; return; }
   if (!res.data || !res.data.length) { el.innerHTML = '<p class="state-msg">Belum ada media.</p>'; return; }
   el.innerHTML = '';
+  var isAdmin = currentAccount && currentAccount.role === 'admin';
   res.data.forEach(function (f) {
     var isVid = /\.(mp4|webm|mov|avi)$/i.test(f.file_name || '');
     var d = document.createElement('div');
@@ -231,12 +303,15 @@ async function loadGallery() {
     d.innerHTML = isVid
       ? '<video src="' + esc(f.file_url) + '" class="g-media" controls></video>'
       : '<img src="' + esc(f.file_url) + '" class="g-media" onclick="openLightbox(\'' + esc(f.file_url) + '\')" loading="lazy"/>';
-    d.innerHTML += '<button class="g-del" onclick="delMedia(\'' + f.id + '\',\'' + esc(f.file_name) + '\')">✕</button>';
+    if (isAdmin) {
+      d.innerHTML += '<button class="g-del" onclick="delMedia(\'' + f.id + '\',\'' + esc(f.file_name) + '\')">✕</button>';
+    }
     el.appendChild(d);
   });
 }
 
 async function doUpload(input) {
+  if (!currentAccount || currentAccount.role !== 'admin') { toast('Hanya admin yang bisa upload', false); return; }
   var file = input.files[0];
   if (!file) return;
   toast('Mengupload...');
@@ -252,6 +327,7 @@ async function doUpload(input) {
 }
 
 async function delMedia(id, name) {
+  if (!currentAccount || currentAccount.role !== 'admin') return;
   if (!confirm('Hapus media ini?')) return;
   await sb.storage.from('gallery').remove([name]);
   var res = await sb.from('gallery').delete().eq('id', id);
@@ -265,7 +341,6 @@ function openLightbox(url) {
   document.getElementById('lightboxImg').src = url;
   document.getElementById('lightbox').classList.add('show');
 }
-
 function closeLightbox() {
   document.getElementById('lightbox').classList.remove('show');
   document.getElementById('lightboxImg').src = '';
