@@ -322,20 +322,134 @@ body.dark .orb3 { opacity:0.09; }
 .note-card {
   background:var(--glass); border:1px solid var(--glass-border);
   backdrop-filter:var(--blur); -webkit-backdrop-filter:var(--blur);
-  border-radius:18px; padding:14px 16px; box-shadow:var(--glass-shadow);
+  border-radius:18px; overflow:hidden;
+  box-shadow:var(--glass-shadow);
   animation:fadeUp 0.2s ease;
 }
 
-.note-header { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
-.note-ttl { font-family:var(--ff-head); font-size:15px; font-weight:700; color:var(--text); line-height:1.3; flex:1; }
-.note-actions { display:flex; gap:4px; flex-shrink:0; }
-.note-actions button {
-  background:transparent; border:none; color:var(--text3); font-size:14px;
-  cursor:pointer; padding:4px 7px; border-radius:8px; transition:all 0.15s;
+/* Summary row — judul + preview, klik untuk buka */
+.note-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 14px;
+  cursor: pointer;
+  transition: background 0.15s;
 }
-.note-actions button:hover { background:var(--bg2); color:var(--text); }
-.note-content { font-size:13.5px; color:var(--text2); margin-top:8px; line-height:1.6; }
-.note-ts { display:block; font-size:11px; color:var(--text3); margin-top:10px; }
+.note-summary:hover { background: rgba(61,90,254,0.06); }
+.note-summary:active { background: rgba(61,90,254,0.1); }
+
+.note-sum-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.note-ttl {
+  font-family: var(--ff-head);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.note-preview {
+  font-size: 12px;
+  color: var(--text3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.note-sum-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.note-author-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.note-author-name {
+  font-size: 11px;
+  color: var(--text3);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.note-chevron {
+  font-size: 18px;
+  color: var(--text3);
+  font-weight: 300;
+  line-height: 1;
+}
+
+/* Action row — edit + hapus */
+.note-action-row {
+  display: flex;
+  border-top: 1px solid var(--glass-border);
+}
+
+.note-act-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  padding: 9px;
+  font-size: 12px;
+  font-family: var(--ff-body);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+  color: var(--text3);
+}
+.note-act-btn:hover { background: var(--bg2); }
+.note-act-btn.edit-btn { border-right: 1px solid var(--glass-border); color: var(--accent); }
+.note-act-btn.del-btn { color: var(--danger); }
+
+/* Modal Baca Full */
+.modal-read .read-author {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--text3);
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.read-author-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+.modal-read .read-body {
+  font-size: 14.5px;
+  color: var(--text);
+  line-height: 1.75;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--bg2);
+  border-radius: 12px;
+  padding: 14px;
+  min-height: 60px;
+}
+
+.modal-read .read-ts {
+  font-size: 11px;
+  color: var(--text3);
+  margin-top: 4px;
+}
 
 /* FAB button tambah catatan */
 .notes-fab-wrap {
@@ -543,12 +657,30 @@ body.dark .orb3 { opacity:0.09; }
 /* ===== LIGHTBOX ===== */
 .lightbox {
   display:none; position:fixed; inset:0;
-  background:rgba(0,0,0,0.9); z-index:999;
+  background:rgba(0,0,0,0.92); z-index:999;
   align-items:center; justify-content:center;
   backdrop-filter:blur(10px);
 }
 .lightbox.show { display:flex; }
-.lightbox img { max-width:94vw; max-height:90vh; border-radius:14px; object-fit:contain; box-shadow:0 20px 60px rgba(0,0,0,0.6); }
+.lightbox img { max-width:94vw; max-height:88vh; border-radius:14px; object-fit:contain; box-shadow:0 20px 60px rgba(0,0,0,0.6); }
+
+.lightbox-close {
+  position: absolute;
+  top: 18px; right: 18px;
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255,255,255,0.15);
+  color: white;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(8px);
+  transition: all 0.18s;
+  z-index: 1000;
+}
+.lightbox-close:hover { background: rgba(255,255,255,0.28); transform: scale(1.1); }
+.lightbox-close:active { transform: scale(0.92); }
 
 /* ===== STATE MESSAGES ===== */
 .state-msg { text-align:center; padding:40px 20px; color:var(--text3); font-size:14px; }
