@@ -154,7 +154,21 @@
 
 <!-- LIGHTBOX -->
 <div id="lightbox" class="lightbox" onclick="closeLightbox()">
+  <button class="lightbox-close" onclick="closeLightbox()">✕</button>
   <img id="lightboxImg" src="" alt=""/>
+</div>
+
+<!-- MODAL: Baca Catatan Full -->
+<div id="readModal" class="modal-overlay" onclick="closeReadModal(event)">
+  <div class="modal-box modal-read">
+    <div class="modal-header">
+      <span class="modal-title" id="readModalTitle"></span>
+      <button class="modal-close" onclick="closeReadModal()">✕</button>
+    </div>
+    <div class="read-author" id="readModalAuthor"></div>
+    <div class="read-body" id="readModalBody"></div>
+    <div class="read-ts" id="readModalTs"></div>
+  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
