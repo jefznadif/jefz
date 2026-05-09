@@ -20,19 +20,49 @@
   <div class="login-wrap">
     <div class="login-logo">✦</div>
     <h1 class="login-title">Jefz</h1>
-    <p class="login-sub">Enter your PIN to continue</p>
-    <div class="pin-field-wrap">
-      <input
-        type="password"
-        id="pinInput"
-        class="pin-input"
-        placeholder="••••"
-        autocomplete="off"
-        autofocus
-      />
-      <button class="pin-submit" onclick="doLogin()">→</button>
+    <p class="login-sub">Pilih akun untuk masuk</p>
+
+    <!-- Step 1: Pilih akun -->
+    <div id="stepAccount">
+      <div class="account-list">
+        <button class="account-card" onclick="selectAccount('Ndifaa','user')">
+          <div class="acc-avatar ndifaa">N</div>
+          <div class="acc-info">
+            <span class="acc-name">Ndifaa</span>
+            <span class="acc-role">User</span>
+          </div>
+          <span class="acc-arrow">›</span>
+        </button>
+        <button class="account-card" onclick="selectAccount('Jef\'z','admin')">
+          <div class="acc-avatar jefz">J</div>
+          <div class="acc-info">
+            <span class="acc-name">Jef'z</span>
+            <span class="acc-role">Admin</span>
+          </div>
+          <span class="acc-arrow">›</span>
+        </button>
+      </div>
     </div>
-    <div id="loginErr" class="login-err"></div>
+
+    <!-- Step 2: Input PIN -->
+    <div id="stepPin" style="display:none">
+      <div class="back-row">
+        <button class="back-btn" onclick="backToAccount()">← Kembali</button>
+      </div>
+      <div class="selected-acc-info" id="selectedAccInfo"></div>
+      <div class="pin-field-wrap">
+        <input
+          type="password"
+          id="pinInput"
+          class="pin-input"
+          placeholder="Masukkan PIN"
+          autocomplete="off"
+        />
+        <button class="pin-submit" onclick="doLogin()">→</button>
+      </div>
+      <div id="loginErr" class="login-err"></div>
+    </div>
+
   </div>
 </div>
 
@@ -40,7 +70,13 @@
 <div id="dashPage" class="page">
 
   <div class="topbar">
-    <span class="topbar-title" id="topbarTitle">Catatan</span>
+    <div class="topbar-left">
+      <div class="topbar-avatar" id="topbarAvatar"></div>
+      <div>
+        <div class="topbar-title" id="topbarTitle">Catatan</div>
+        <div class="topbar-user" id="topbarUser"></div>
+      </div>
+    </div>
     <div class="topbar-right">
       <button class="tb-btn" onclick="toggleTheme()" id="themeBtn">🌙</button>
       <button class="tb-btn logout-btn" onclick="doLogout()">Logout</button>
@@ -69,7 +105,7 @@
   <!-- GALLERY TAB -->
   <div id="tabGallery" class="tab">
     <div class="gallery-header">
-      <label class="btn-upload">
+      <label class="btn-upload" id="uploadLabel">
         + Upload
         <input type="file" id="fileUpload" accept="image/*,video/*" style="display:none" onchange="doUpload(this)"/>
       </label>
