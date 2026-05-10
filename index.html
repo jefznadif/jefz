@@ -132,23 +132,27 @@
       <span class="modal-title">Catatan Baru</span>
       <button class="modal-close" onclick="closeNoteModal()">✕</button>
     </div>
-    <input type="text" id="noteTitleInput" class="field" placeholder="Judul catatan..."/>
-    <textarea id="noteBodyInput" class="field field-ta" rows="4" placeholder="Isi catatan..."></textarea>
-    <button class="btn-act" onclick="addNote()">Simpan Catatan</button>
+    <div class="modal-body">
+      <input type="text" id="noteTitleInput" class="field" placeholder="Judul catatan..."/>
+      <textarea id="noteBodyInput" class="field field-ta" rows="4" placeholder="Isi catatan..."></textarea>
+      <button class="btn-act" onclick="addNote()">Simpan Catatan</button>
+    </div>
   </div>
 </div>
 
-<!-- MODAL: Edit Judul Catatan -->
+<!-- MODAL: Edit Catatan -->
 <div id="editModal" class="modal-overlay" onclick="closeEditModal(event)">
   <div class="modal-box">
     <div class="modal-header">
       <span class="modal-title">Edit Catatan</span>
       <button class="modal-close" onclick="closeEditModal()">✕</button>
     </div>
-    <input type="text" id="editTitleInput" class="field" placeholder="Judul..."/>
-    <textarea id="editBodyInput" class="field field-ta" rows="4" placeholder="Isi catatan..."></textarea>
-    <input type="hidden" id="editNoteId"/>
-    <button class="btn-act" onclick="saveEditNote()">Simpan</button>
+    <div class="modal-body">
+      <input type="text" id="editTitleInput" class="field" placeholder="Judul..."/>
+      <textarea id="editBodyInput" class="field field-ta" rows="4" placeholder="Isi catatan..."></textarea>
+      <input type="hidden" id="editNoteId"/>
+      <button class="btn-act" onclick="saveEditNote()">Simpan</button>
+    </div>
   </div>
 </div>
 
@@ -168,9 +172,11 @@
       <span class="modal-title" id="readModalTitle"></span>
       <button class="modal-close" onclick="closeReadModal()">✕</button>
     </div>
-    <div class="read-author" id="readModalAuthor"></div>
-    <div class="read-body" id="readModalBody"></div>
-    <div class="read-ts" id="readModalTs"></div>
+    <div class="modal-body">
+      <div class="read-author" id="readModalAuthor"></div>
+      <div class="read-body" id="readModalBody"></div>
+      <div class="read-ts" id="readModalTs"></div>
+    </div>
   </div>
 </div>
 
