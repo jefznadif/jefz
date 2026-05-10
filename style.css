@@ -28,7 +28,6 @@
   --nav-h:        68px;
   --topbar-h:     62px;
   --blur:         blur(20px) saturate(180%);
-  --keyboard-offset: 0px;
 }
 
 body.dark {
@@ -303,15 +302,14 @@ body {
   gap: 12px;
 }
 
-/* Read modal & Edit modal sekarang sama persis */
+/* Read modal */
 .modal-read .read-author { display:flex; align-items:center; gap:7px; font-family:var(--ff-sys); font-size:12px; color:var(--text3); font-weight:500; position:relative; }
 .read-author-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; display:inline-block; }
 .read-author-option { margin-left:auto; font-size:18px; color:var(--text3); cursor:pointer; padding:4px 0 4px 12px; line-height:1; }
 .read-author-option:active { opacity:0.5; }
 
-/* Read body & Edit body styling */
-.modal-read .read-body,
-.modal-edit .edit-body {
+/* Read body */
+.modal-read .read-body {
   font-family: var(--ff-serif);
   font-size: 16px;
   color: var(--text);
@@ -324,9 +322,18 @@ body {
 }
 .modal-read .read-ts { font-family:var(--ff-sys); font-size:11px; color:var(--text3); }
 
-/* Edit modal - menggunakan class modal-read agar perilaku sama */
-.modal-edit .modal-read {
+/* EDIT MODAL - perilaku tinggi sama dengan modal baca (tidak dipaksa ke bawah) */
+.modal-edit .modal-box.modal-read {
   max-width: 460px;
+  max-height: 88vh;
+}
+.modal-edit .edit-body {
+  font-family: var(--ff-serif);
+  font-size: 16px;
+  line-height: 1.8;
+  background: var(--input-bg);
+  border-radius: 12px;
+  padding: 14px;
 }
 .modal-edit .edit-body input,
 .modal-edit .edit-body textarea {
@@ -350,13 +357,13 @@ body {
   outline: none;
 }
 
-/* Keyboard adjustment - modal akan mengecil saat keyboard aktif */
+/* Keyboard adjustment - HANYA untuk modal edit saat di mobile */
 @media (max-width: 768px) {
-  .modal-overlay.show {
+  .modal-edit.modal-overlay.show {
     align-items: flex-end;
     padding-bottom: 0;
   }
-  .modal-overlay.show .modal-box {
+  .modal-edit.modal-overlay.show .modal-box {
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
     max-height: 85vh;
