@@ -302,13 +302,12 @@ body {
   gap: 12px;
 }
 
-/* Read modal */
+/* ===== READ MODAL ===== */
 .modal-read .read-author { display:flex; align-items:center; gap:7px; font-family:var(--ff-sys); font-size:12px; color:var(--text3); font-weight:500; position:relative; }
 .read-author-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; display:inline-block; }
 .read-author-option { margin-left:auto; font-size:18px; color:var(--text3); cursor:pointer; padding:4px 0 4px 12px; line-height:1; }
 .read-author-option:active { opacity:0.5; }
 
-/* Read body */
 .modal-read .read-body {
   font-family: var(--ff-serif);
   font-size: 16px;
@@ -322,38 +321,94 @@ body {
 }
 .modal-read .read-ts { font-family:var(--ff-sys); font-size:11px; color:var(--text3); }
 
-/* Edit body - untuk modal edit (struktur sudah sama dengan read modal) */
-.edit-body {
+/* ===== EDIT MODAL — menyerupai tampilan Read Modal ===== */
+/* Author row di edit modal */
+.edit-author-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--ff-sys);
+  font-size: 12px;
+  color: var(--text3);
+  font-weight: 500;
+}
+.edit-author-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+/* Judul di edit modal — sama gaya dengan read-body tapi untuk input */
+.edit-title-wrap {
+  background: var(--input-bg);
+  border-radius: 12px;
+  padding: 12px 14px;
+  border: 1.5px solid transparent;
+  transition: border-color 0.18s;
+}
+.edit-title-wrap:focus-within {
+  border-color: var(--accent);
+}
+.edit-title-field {
+  width: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
   font-family: var(--ff-serif);
-  font-size: 16px;
-  line-height: 1.8;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.4;
+  resize: none;
+  padding: 0;
+}
+.edit-title-field::placeholder {
+  color: var(--text3);
+  font-weight: 400;
+}
+
+/* Isi di edit modal — sama persis dengan .read-body tapi bisa diedit */
+.edit-body-wrap {
   background: var(--input-bg);
   border-radius: 12px;
   padding: 14px;
+  border: 1.5px solid transparent;
+  transition: border-color 0.18s;
+  flex: 1;
 }
-.edit-body input,
-.edit-body textarea {
+.edit-body-wrap:focus-within {
+  border-color: var(--accent);
+}
+.edit-body-field {
   width: 100%;
-  font-family: var(--ff-serif);
-  font-size: 16px;
-  line-height: 1.8;
   background: transparent;
   border: none;
-  padding: 0;
-  margin: 0;
+  outline: none;
+  font-family: var(--ff-serif);
+  font-size: 16px;
   color: var(--text);
-  outline: none;
+  line-height: 1.8;
   resize: none;
+  padding: 0;
+  /* Auto-height: dimulai dari min, tumbuh sesuai konten */
+  min-height: 80px;
+  overflow: hidden;
 }
-.edit-body textarea {
-  min-height: 120px;
-}
-.edit-body input:focus,
-.edit-body textarea:focus {
-  outline: none;
+.edit-body-field::placeholder {
+  color: var(--text3);
 }
 
-/* ===== INPUTS ===== */
+/* Label hint di bawah kolom isi */
+.edit-field-hint {
+  font-family: var(--ff-sys);
+  font-size: 11px;
+  color: var(--text3);
+  margin-top: -4px;
+}
+
+/* ===== INPUTS (for noteModal / addNote) ===== */
 .field { background:var(--input-bg); border:1px solid var(--separator); border-radius:12px; padding:11px 14px; font-family:var(--ff-sys); font-size:15px; color:var(--text); outline:none; transition:border 0.18s; width:100%; resize:none; }
 .field::placeholder { color:var(--text3); }
 .field:focus { border-color:var(--accent); }
