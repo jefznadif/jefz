@@ -140,7 +140,7 @@
   </div>
 </div>
 
-<!-- MODAL: Edit Catatan - HANYA menambahkan class modal-read -->
+<!-- MODAL: Edit Catatan — tampilan menyerupai Read Modal -->
 <div id="editModal" class="modal-overlay" onclick="closeEditModal(event)">
   <div class="modal-box modal-read">
     <div class="modal-header">
@@ -148,10 +148,31 @@
       <button class="modal-close" onclick="closeEditModal()">✕</button>
     </div>
     <div class="modal-body">
-      <input type="text" id="editTitleInput" class="field" placeholder="Judul catatan..."/>
-      <textarea id="editBodyInput" class="field field-ta" rows="4" placeholder="Isi catatan..."></textarea>
+      <!-- Row author (sama dengan read modal) -->
+      <div class="edit-author-row" id="editAuthorRow">
+        <!-- diisi via JS -->
+      </div>
+      <!-- Judul — background pill seperti read-body -->
+      <div class="edit-title-wrap">
+        <textarea
+          id="editTitleInput"
+          class="edit-title-field"
+          placeholder="Judul catatan..."
+          rows="1"
+          oninput="autoResize(this)"
+        ></textarea>
+      </div>
+      <!-- Isi — persis seperti .read-body tapi textarea -->
+      <div class="edit-body-wrap">
+        <textarea
+          id="editBodyInput"
+          class="edit-body-field"
+          placeholder="Isi catatan..."
+          oninput="autoResize(this)"
+        ></textarea>
+      </div>
       <input type="hidden" id="editNoteId"/>
-      <button class="btn-act" onclick="saveEditNote()">Simpan</button>
+      <button class="btn-act" onclick="saveEditNote()">Simpan Perubahan</button>
     </div>
   </div>
 </div>
