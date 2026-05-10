@@ -139,7 +139,7 @@ body {
 .msg-sender { font-family:var(--ff-sys); font-size:11px; font-weight:600; margin-bottom:3px; padding:0 5px; }
 .bubble { font-family:var(--ff-sys); padding:9px 13px; border-radius:18px; font-size:15px; line-height:1.45; word-break:break-word; }
 .mine .bubble { background:var(--bubble-mine); border:1px solid var(--bubble-bm); border-bottom-right-radius:5px; color:var(--text); }
-.theirs .bubble { background:var(--bubble-theirs); border:1px solid var(--bubble-bt); border-bottom-left-radius:5px; color:var(--text); }
+.theirs .bubble { background:var(--bubble-their); border:1px solid var(--bubble-bt); border-bottom-left-radius:5px; color:var(--text); }
 .btime { display:block; font-family:var(--ff-sys); font-size:10px; color:var(--text3); margin-top:4px; text-align:right; }
 .chat-bar { flex-shrink:0; display:flex; gap:10px; align-items:center; padding:10px 14px; background:var(--topbar-bg); border-top:1px solid var(--separator); backdrop-filter:var(--blur); -webkit-backdrop-filter:var(--blur); transition:background 0.3s; }
 .chat-field { flex:1; margin:0; }
@@ -321,6 +321,31 @@ body {
   padding: 14px;
 }
 .modal-read .read-ts { font-family:var(--ff-sys); font-size:11px; color:var(--text3); }
+
+/* ===== EDIT MODAL ===== */
+.modal-edit .modal-body input,
+.modal-edit .modal-body textarea {
+  width: 100%;
+  font-family: var(--ff-serif);
+  font-size: 16px;
+  line-height: 1.8;
+  background: var(--input-bg);
+  border: 1px solid var(--separator);
+  border-radius: 12px;
+  padding: 12px 14px;
+  color: var(--text);
+  outline: none;
+  transition: border 0.18s;
+}
+.modal-edit .modal-body input:focus,
+.modal-edit .modal-body textarea:focus {
+  border-color: var(--accent);
+}
+.modal-edit .modal-body textarea {
+  min-height: 140px;
+  resize: vertical;
+  font-family: var(--ff-serif);
+}
 
 /* ===== INPUTS ===== */
 .field { background:var(--input-bg); border:1px solid var(--separator); border-radius:12px; padding:11px 14px; font-family:var(--ff-sys); font-size:15px; color:var(--text); outline:none; transition:border 0.18s; width:100%; resize:none; }
