@@ -247,18 +247,27 @@ body {
 
 /* ===== NOTES ===== */
 #tabNotes.active-tab {
-  position:fixed;
-  top:var(--topbar-h);
-  bottom:var(--nav-h);
-  left:0; right:0;
-  overflow-y:auto;
-  -webkit-overflow-scrolling:touch;
-  overscroll-behavior:contain;
-  background:var(--bg);
+  position: fixed;
+  top: var(--topbar-h);
+  bottom: var(--nav-h);
+  left: 0;
+  right: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  background: var(--bg);
+  /* Pastikan background mengisi penuh */
+  min-height: 0;
 }
 .notes-list {
-  padding:16px 16px 100px;
-  display:flex; flex-direction:column; gap:0;
+  /* padding bawah beri ruang FAB + sedikit napas */
+  padding: 16px 16px 120px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  /* Pastikan list meregang dan background terisi */
+  min-height: 100%;
+  background: var(--bg);
 }
 .note-card { background:var(--bg2); overflow:hidden; animation:noteIn 0.2s ease; }
 .notes-list .note-card + .note-card { border-top:1px solid var(--separator); }
