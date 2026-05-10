@@ -485,9 +485,13 @@ function openEditModal(id) {
   document.getElementById('editBodyInput').value = n.content || '';
   document.getElementById('editNoteId').value = id;
   
-  // Pastikan modal edit memiliki class modal-edit untuk styling
+  // Siapkan modal edit dengan tampilan sama persis seperti read modal
   var editModal = document.getElementById('editModal');
+  var modalContent = editModal.querySelector('.modal-box');
+  
+  // Tambahkan class modal-read dan modal-edit untuk styling yang sama
   editModal.classList.add('modal-edit');
+  if (modalContent) modalContent.classList.add('modal-read');
   
   var modalTitle = editModal.querySelector('.modal-title');
   if (modalTitle) modalTitle.textContent = 'Edit Catatan';
@@ -499,8 +503,12 @@ function openEditModal(id) {
 
 function closeEditModal(e) {
   if (e && e.target !== document.getElementById('editModal')) return;
-  document.getElementById('editModal').classList.remove('show');
-  document.getElementById('editModal').classList.remove('modal-edit');
+  var editModal = document.getElementById('editModal');
+  var modalContent = editModal.querySelector('.modal-box');
+  
+  editModal.classList.remove('show');
+  editModal.classList.remove('modal-edit');
+  if (modalContent) modalContent.classList.remove('modal-read');
 }
 
 async function saveEditNote() {
@@ -510,8 +518,7 @@ async function saveEditNote() {
   if (!newTitle) { toast('Judul tidak boleh kosong!', false); return; }
   var res = await sb.from('notes').update({ title: newTitle, content: newContent }).eq('id', id);
   if (res.error) { toast('Gagal edit: ' + res.error.message, false); return; }
-  document.getElementById('editModal').classList.remove('show');
-  document.getElementById('editModal').classList.remove('modal-edit');
+  closeEditModal();
   toast('Catatan diperbarui ✓');
   loadNotes();
 }
