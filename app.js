@@ -384,7 +384,6 @@ function _renderReadModal(n) {
   
   window.currentReadNoteId = n.id;
   
-  // Pasang event listener untuk tombol option di read modal
   var optionBtn = document.querySelector('#readModalAuthor .read-author-option');
   if (optionBtn) {
     optionBtn.onclick = function(e) {
@@ -486,8 +485,10 @@ function openEditModal(id) {
   document.getElementById('editBodyInput').value = n.content || '';
   document.getElementById('editNoteId').value = id;
   
-  // Siapkan modal edit dengan tampilan sama seperti read modal
+  // Pastikan modal edit memiliki class modal-edit untuk styling
   var editModal = document.getElementById('editModal');
+  editModal.classList.add('modal-edit');
+  
   var modalTitle = editModal.querySelector('.modal-title');
   if (modalTitle) modalTitle.textContent = 'Edit Catatan';
   
@@ -499,6 +500,7 @@ function openEditModal(id) {
 function closeEditModal(e) {
   if (e && e.target !== document.getElementById('editModal')) return;
   document.getElementById('editModal').classList.remove('show');
+  document.getElementById('editModal').classList.remove('modal-edit');
 }
 
 async function saveEditNote() {
@@ -509,6 +511,7 @@ async function saveEditNote() {
   var res = await sb.from('notes').update({ title: newTitle, content: newContent }).eq('id', id);
   if (res.error) { toast('Gagal edit: ' + res.error.message, false); return; }
   document.getElementById('editModal').classList.remove('show');
+  document.getElementById('editModal').classList.remove('modal-edit');
   toast('Catatan diperbarui ✓');
   loadNotes();
 }
