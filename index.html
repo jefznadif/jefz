@@ -140,29 +140,22 @@
   </div>
 </div>
 
-<!-- MODAL: Edit Catatan -->
+<!-- MODAL: Edit Catatan - STRUKTUR DIPERBAIKI SAMA DENGAN MODAL BACA -->
 <div id="editModal" class="modal-overlay" onclick="closeEditModal(event)">
-  <div class="modal-box">
+  <div class="modal-box modal-read">
     <div class="modal-header">
       <span class="modal-title">Edit Catatan</span>
       <button class="modal-close" onclick="closeEditModal()">✕</button>
     </div>
     <div class="modal-body">
-      <input type="text" id="editTitleInput" class="field" placeholder="Judul..."/>
-      <textarea id="editBodyInput" class="field field-ta" rows="4" placeholder="Isi catatan..."></textarea>
-      <input type="hidden" id="editNoteId"/>
-      <button class="btn-act" onclick="saveEditNote()">Simpan</button>
+      <div class="edit-body">
+        <input type="text" id="editTitleInput" class="field" placeholder="Judul catatan..." style="margin-bottom:12px;"/>
+        <textarea id="editBodyInput" class="field field-ta" rows="4" placeholder="Isi catatan..."></textarea>
+        <input type="hidden" id="editNoteId"/>
+        <button class="btn-act" onclick="saveEditNote()" style="margin-top:12px;">Simpan Perubahan</button>
+      </div>
     </div>
   </div>
-</div>
-
-<!-- TOAST -->
-<div id="toast" class="toast"></div>
-
-<!-- LIGHTBOX -->
-<div id="lightbox" class="lightbox" onclick="closeLightbox()">
-  <button class="lightbox-close" onclick="closeLightbox()">✕</button>
-  <img id="lightboxImg" src="" alt=""/>
 </div>
 
 <!-- MODAL: Baca Catatan Full -->
@@ -178,6 +171,15 @@
       <div class="read-ts" id="readModalTs"></div>
     </div>
   </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast" class="toast"></div>
+
+<!-- LIGHTBOX -->
+<div id="lightbox" class="lightbox" onclick="closeLightbox()">
+  <button class="lightbox-close" onclick="closeLightbox()">✕</button>
+  <img id="lightboxImg" src="" alt=""/>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
