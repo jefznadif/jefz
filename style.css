@@ -1,17 +1,11 @@
 /* ===== RESET ===== */
 *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
 
-/* ===== APPLE FONTS =====
-   SF Pro       → system UI, body, semua teks umum
-   New York     → serif, judul catatan, isi baca catatan
-   Garamond     → marketing, logo app, tagline
-*/
 :root {
   --ff-sys:       -apple-system, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
   --ff-serif:     'New York', 'Georgia', 'Times New Roman', serif;
   --ff-marketing: 'Garamond', 'Apple Garamond', 'EB Garamond', 'Palatino Linotype', Georgia, serif;
 
-  /* Colors — Light */
   --bg:              #f2f2f7;
   --bg2:             #ffffff;
   --glass:           rgba(255,255,255,0.72);
@@ -34,22 +28,23 @@
   --blur:            blur(20px) saturate(180%);
 }
 
-/* ===== DARK MODE — Pure CSS Invert ===== */
-body.dark {
+/* ===== DARK MODE =====
+   Invert SEMUA kecuali foto/video saja.
+   Caranya: invert pada #dashPage dan #loginPage (konten),
+   bukan pada body — supaya fixed elements (topbar, nav) tidak geser.
+   Lalu counter-invert hanya img dan video.
+*/
+body.dark #dashPage,
+body.dark #loginPage,
+body.dark .modal-overlay,
+body.dark .lightbox,
+body.dark .toast {
   filter: invert(1) hue-rotate(180deg);
 }
 
-/* Kembalikan elemen visual agar tidak double-invert */
+/* Hanya foto & video yang dikembalikan — semua lainnya ikut invert */
 body.dark img,
-body.dark video,
-body.dark .orb,
-body.dark .topbar-avatar,
-body.dark .acc-avatar,
-body.dark .acc-avatar-lg,
-body.dark .note-author-dot,
-body.dark .read-author-dot,
-body.dark .acc-avatar.ndifaa,
-body.dark .acc-avatar.jefz {
+body.dark video {
   filter: invert(1) hue-rotate(180deg);
 }
 
@@ -81,7 +76,6 @@ body {
   from { transform:translate(0,0) scale(1); }
   to   { transform:translate(28px,18px) scale(1.07); }
 }
-
 .login-wrap {
   position:relative; z-index:2; width:100%; max-width:360px;
   padding:20px; text-align:center; animation:fadeUp 0.45s ease forwards;
@@ -90,38 +84,15 @@ body {
   from { opacity:0; transform:translateY(20px); }
   to   { opacity:1; transform:translateY(0); }
 }
-
-/* Logo — Garamond italic */
 .login-logo {
   font-family: var(--ff-marketing);
-  font-size: 56px;
-  font-style: italic;
-  font-weight: 400;
-  background: linear-gradient(135deg,#007aff,#e91e8c);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  margin-bottom: 6px;
-  letter-spacing: -1px;
-  line-height: 1;
+  font-size:56px; font-style:italic; font-weight:400;
+  background:linear-gradient(135deg,#007aff,#e91e8c);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+  margin-bottom:6px; letter-spacing:-1px; line-height:1;
 }
-
-/* App name — SF Pro Display bold */
-.login-title {
-  font-family: var(--ff-sys);
-  font-size: 34px;
-  font-weight: 700;
-  letter-spacing: -0.8px;
-  color: var(--text);
-  margin-bottom: 6px;
-}
-
-/* Subtitle — SF Pro Text regular */
-.login-sub {
-  font-family: var(--ff-sys);
-  font-size: 15px; font-weight: 400;
-  color: var(--text3); margin-bottom: 30px; letter-spacing:-0.1px;
-}
+.login-title { font-family:var(--ff-sys); font-size:34px; font-weight:700; letter-spacing:-0.8px; color:var(--text); margin-bottom:6px; }
+.login-sub { font-family:var(--ff-sys); font-size:15px; font-weight:400; color:var(--text3); margin-bottom:30px; letter-spacing:-0.1px; }
 
 .account-list { display:flex; flex-direction:column; gap:12px; }
 .account-card {
@@ -132,7 +103,7 @@ body {
   cursor:pointer; text-align:left; box-shadow:var(--glass-shadow);
   transition:all 0.22s; width:100%;
 }
-.account-card:hover { transform:translateY(-2px); box-shadow:0 16px 40px rgba(0,0,0,0.12); }
+.account-card:hover { transform:translateY(-2px); }
 .account-card:active { transform:scale(0.97); }
 .acc-avatar {
   width:48px; height:48px; border-radius:14px;
@@ -147,10 +118,7 @@ body {
 .acc-arrow { font-size:22px; color:var(--text3); }
 
 .back-row { display:flex; margin-bottom:18px; }
-.back-btn {
-  background:transparent; border:none; color:var(--accent);
-  font-family:var(--ff-sys); font-size:15px; cursor:pointer; padding:4px 0;
-}
+.back-btn { background:transparent; border:none; color:var(--accent); font-family:var(--ff-sys); font-size:15px; cursor:pointer; padding:4px 0; }
 .back-btn:hover { opacity:0.7; }
 .selected-acc-info { margin-bottom:18px; }
 .sel-acc {
@@ -163,7 +131,7 @@ body {
   display:flex; align-items:center; justify-content:center;
   font-family:var(--ff-sys); font-size:18px; font-weight:700; color:white; flex-shrink:0;
 }
-.sel-name { font-family:var(--ff-sys); font-size:15px; font-weight:600; color:var(--text); letter-spacing:-0.2px; }
+.sel-name { font-family:var(--ff-sys); font-size:15px; font-weight:600; color:var(--text); }
 .sel-role { font-family:var(--ff-sys); font-size:12px; color:var(--text3); margin-top:2px; }
 
 .pin-field-wrap {
@@ -172,15 +140,11 @@ body {
   backdrop-filter:var(--blur); -webkit-backdrop-filter:var(--blur);
   border-radius:18px; padding:6px 6px 6px 16px; box-shadow:var(--glass-shadow);
 }
-.pin-input {
-  flex:1; background:transparent; border:none; outline:none;
-  font-family:var(--ff-sys); font-size:18px; color:var(--text); padding:10px 0; letter-spacing:3px;
-}
+.pin-input { flex:1; background:transparent; border:none; outline:none; font-family:var(--ff-sys); font-size:18px; color:var(--text); padding:10px 0; letter-spacing:3px; }
 .pin-input::placeholder { color:var(--text3); letter-spacing:0; font-size:15px; }
 .pin-submit {
   width:48px; height:48px; border-radius:13px; border:none;
-  background:var(--accent); color:white;
-  font-family:var(--ff-sys); font-size:22px; font-weight:500;
+  background:var(--accent); color:white; font-family:var(--ff-sys); font-size:22px; font-weight:500;
   cursor:pointer; display:flex; align-items:center; justify-content:center;
   transition:all 0.18s; box-shadow:0 4px 14px var(--accent-glow); flex-shrink:0;
 }
@@ -188,7 +152,7 @@ body {
 .pin-submit:active { transform:scale(0.93); }
 .login-err { margin-top:12px; font-family:var(--ff-sys); font-size:13px; color:var(--danger); min-height:18px; }
 
-/* ===== TOPBAR ===== */
+/* ===== TOPBAR — FIXED, tidak kena invert ===== */
 .topbar {
   position:fixed; top:0; left:0; right:0; height:var(--topbar-h); z-index:100;
   background:var(--glass); border-bottom:1px solid var(--separator);
@@ -203,7 +167,19 @@ body {
 }
 .topbar-title { font-family:var(--ff-sys); font-size:17px; font-weight:600; color:var(--text); letter-spacing:-0.3px; line-height:1.2; }
 .topbar-user { font-family:var(--ff-sys); font-size:11px; color:var(--text3); }
-.topbar-right { display:flex; gap:8px; }
+.topbar-right { display:flex; gap:8px; align-items:center; }
+
+/* Theme button dengan label */
+.theme-btn {
+  display:flex; align-items:center; gap:5px;
+  background:transparent; border:none;
+  font-family:var(--ff-sys); font-size:13px; font-weight:500;
+  color:var(--accent); cursor:pointer; padding:6px 4px; transition:opacity 0.15s;
+}
+.theme-btn:active { opacity:0.6; }
+#themeBtnIcon { font-size:14px; line-height:1; }
+#themeBtnLabel { letter-spacing:-0.1px; }
+
 .tb-btn {
   background:transparent; border:none;
   font-family:var(--ff-sys); font-size:15px; font-weight:400;
@@ -253,15 +229,29 @@ body {
 
 /* ===== NOTES ===== */
 #tabNotes.active-tab {
-  position:fixed; top:var(--topbar-h); bottom:var(--nav-h);
-  left:0; right:0; overflow-y:auto; -webkit-overflow-scrolling:touch;
+  /* Fixed container, scroll di dalam */
+  position: fixed;
+  top: var(--topbar-h);
+  bottom: var(--nav-h);
+  left: 0;
+  right: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  /* padding bawah beri ruang FAB */
+  padding-bottom: 80px;
 }
-.notes-list { padding:16px 16px 100px; display:flex; flex-direction:column; gap:0; min-height:100%; }
+
+.notes-list {
+  padding: 16px 16px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
 
 /* iOS grouped list */
 .note-card { background:var(--bg2); overflow:hidden; animation:fadeUp 0.2s ease; }
 .notes-list .note-card + .note-card { border-top:1px solid var(--separator); }
-.notes-list { background:transparent; }
 .notes-list .note-card:first-child { border-radius:12px 12px 0 0; }
 .notes-list .note-card:last-child  { border-radius:0 0 12px 12px; }
 .notes-list .note-card:only-child  { border-radius:12px; }
@@ -269,11 +259,7 @@ body {
 .note-summary { display:flex; align-items:center; gap:10px; padding:12px 16px; cursor:pointer; transition:background 0.12s; }
 .note-summary:active { background:rgba(0,122,255,0.08); }
 .note-sum-main { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
-
-/* Note title — New York serif */
 .note-ttl { font-family:var(--ff-serif); font-size:15px; font-weight:600; color:var(--text); line-height:1.3; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-
-/* Preview — SF Pro */
 .note-preview { font-family:var(--ff-sys); font-size:12px; color:var(--text3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .note-sum-meta { display:flex; align-items:center; gap:5px; flex-shrink:0; }
 .note-author-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
@@ -288,7 +274,13 @@ body {
 .note-act-btn.edit-btn { border-right:1px solid var(--separator); color:var(--accent); }
 .note-act-btn.del-btn { color:var(--danger); }
 
-.notes-fab-wrap { position:fixed; bottom:calc(var(--nav-h)+18px); right:20px; z-index:50; }
+/* FAB — fixed, tidak terpengaruh scroll */
+.notes-fab-wrap {
+  position: fixed;
+  bottom: calc(var(--nav-h) + 18px);
+  right: 20px;
+  z-index: 150;
+}
 .fab-btn {
   width:52px; height:52px; border-radius:50%; border:none;
   background:var(--accent); color:white; font-size:26px; font-weight:300;
@@ -314,7 +306,6 @@ body {
 .gallery-grid { padding:0 12px 16px; display:grid; grid-template-columns:repeat(3,1fr); gap:3px; }
 .g-item { position:relative; border-radius:3px; overflow:hidden; aspect-ratio:1; background:var(--bg2); }
 .g-item:first-child { border-top-left-radius:12px; }
-.g-item:nth-child(3n) { border-top-right-radius:0; }
 .g-media { width:100%; height:100%; object-fit:cover; display:block; cursor:pointer; transition:transform 0.18s; }
 .g-item:hover .g-media { transform:scale(1.03); }
 .g-del {
@@ -327,7 +318,7 @@ body {
 .g-item:hover .g-del { opacity:1; }
 @media (hover:none) { .g-del { opacity:1; } }
 
-/* ===== BOTTOM NAV ===== */
+/* ===== BOTTOM NAV — FIXED, tidak kena invert ===== */
 .bottom-nav {
   position:fixed; bottom:0; left:0; right:0; height:var(--nav-h); z-index:100;
   background:var(--glass); border-top:1px solid var(--separator);
@@ -353,7 +344,6 @@ body {
 }
 .modal-overlay.show { display:flex; animation:overlayIn 0.18s ease; }
 @keyframes overlayIn { from{opacity:0} to{opacity:1} }
-
 .modal-box {
   background:var(--bg2); border-radius:20px; padding:22px 20px;
   width:100%; max-width:420px; max-height:85vh; overflow-y:auto;
@@ -364,8 +354,6 @@ body {
 @keyframes popIn { from{opacity:0;transform:scale(0.88)} to{opacity:1;transform:scale(1)} }
 .modal-read { max-width:460px; }
 .modal-header { display:flex; justify-content:space-between; align-items:center; }
-
-/* Modal title — SF Pro Display */
 .modal-title { font-family:var(--ff-sys); font-size:17px; font-weight:600; color:var(--text); letter-spacing:-0.3px; }
 .modal-close {
   background:var(--bg); border:none; border-radius:50%;
@@ -373,18 +361,12 @@ body {
   cursor:pointer; display:flex; align-items:center; justify-content:center; transition:background 0.15s;
 }
 .modal-close:hover { background:var(--separator); }
-
-/* Read modal — author */
 .modal-read .read-author { display:flex; align-items:center; gap:7px; font-family:var(--ff-sys); font-size:12px; color:var(--text3); font-weight:500; }
 .read-author-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; display:inline-block; }
-
-/* Read body — New York serif */
 .modal-read .read-body {
-  font-family: var(--ff-serif);
-  font-size: 16px; color:var(--text); line-height:1.8;
+  font-family:var(--ff-serif); font-size:16px; color:var(--text); line-height:1.8;
   white-space:pre-wrap; word-break:break-word;
-  background:var(--bg); border-radius:12px; padding:14px; min-height:60px;
-  letter-spacing:0.1px;
+  background:var(--bg); border-radius:12px; padding:14px; min-height:60px; letter-spacing:0.1px;
 }
 .modal-read .read-ts { font-family:var(--ff-sys); font-size:11px; color:var(--text3); }
 
@@ -398,7 +380,6 @@ body {
 .field::placeholder { color:var(--text3); }
 .field:focus { border-color:var(--accent); }
 .field-ta { min-height:90px; }
-
 .btn-act {
   background:var(--accent); color:white; border:none; border-radius:13px; padding:13px;
   font-family:var(--ff-sys); font-size:15px; font-weight:600;
@@ -440,10 +421,15 @@ body {
 .lightbox-close:active { transform:scale(0.92); }
 
 /* ===== STATE MSG ===== */
-.state-msg { text-align:center; padding:40px 20px; font-family:var(--ff-sys); color:var(--text3); font-size:15px; font-weight:400; }
+.state-msg { text-align:center; padding:40px 20px; font-family:var(--ff-sys); color:var(--text3); font-size:15px; }
 .state-msg.err { color:var(--danger); }
 
 /* ===== SCROLLBAR ===== */
 ::-webkit-scrollbar { width:3px; }
 ::-webkit-scrollbar-track { background:transparent; }
 ::-webkit-scrollbar-thumb { background:var(--text3); border-radius:4px; }
+
+@keyframes fadeUp {
+  from { opacity:0; transform:translateY(12px); }
+  to   { opacity:1; transform:translateY(0); }
+}
