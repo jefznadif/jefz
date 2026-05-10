@@ -374,7 +374,7 @@ function _renderReadModal(n) {
   var canEdit = isAdmin || isOwner;
   
   if (canEdit) {
-    authorHtml += '<span class="read-author-option" onclick="showReadModalOption(' + n.id + ', event)">⋮</span>';
+    authorHtml += '<span class="read-author-option" data-note-id="' + n.id + '" style="margin-left:auto; font-size:18px; color:var(--text3); cursor:pointer; padding:4px 0 4px 12px; line-height:1;">⋮</span>';
   }
   
   document.getElementById('readModalAuthor').innerHTML = authorHtml;
@@ -383,6 +383,15 @@ function _renderReadModal(n) {
   document.getElementById('readModal').classList.add('show');
   
   window.currentReadNoteId = n.id;
+  
+  // Pasang event listener untuk tombol option di read modal
+  var optionBtn = document.querySelector('#readModalAuthor .read-author-option');
+  if (optionBtn) {
+    optionBtn.onclick = function(e) {
+      e.stopPropagation();
+      showReadModalOption(n.id, e);
+    };
+  }
 }
 
 function showReadModalOption(noteId, event) {
@@ -410,7 +419,7 @@ function showReadModalOption(noteId, event) {
   editBtn.onclick = function(e) {
     e.stopPropagation();
     closeActiveOptionMenu();
-    closeReadModal();
+    document.getElementById('readModal').classList.remove('show');
     setTimeout(function() {
       openEditModal(noteId);
     }, 200);
@@ -422,7 +431,7 @@ function showReadModalOption(noteId, event) {
   delBtn.onclick = function(e) {
     e.stopPropagation();
     closeActiveOptionMenu();
-    closeReadModal();
+    document.getElementById('readModal').classList.remove('show');
     setTimeout(function() {
       delNote(noteId);
     }, 200);
@@ -451,7 +460,6 @@ function openNoteModal() {
   document.getElementById('noteBodyInput').value = '';
   document.getElementById('noteModal').classList.add('show');
   setTimeout(function() { document.getElementById('noteTitleInput').focus(); }, 120);
-  adjustModalForKeyboard('noteModal');
 }
 function closeNoteModal(e) {
   if (e && e.target !== document.getElementById('noteModal')) return;
@@ -472,27 +480,20 @@ async function addNote() {
 function openEditModal(id) {
   var n = notesCache[id];
   if (!n) return;
-  document.getElementById('editNoteId').value = id;
+  
+  // Set nilai ke input
   document.getElementById('editTitleInput').value = n.title || '';
   document.getElementById('editBodyInput').value = n.content || '';
-  document.getElementById('editModal').classList.add('show');
+  document.getElementById('editNoteId').value = id;
+  
+  // Siapkan modal edit dengan tampilan sama seperti read modal
+  var editModal = document.getElementById('editModal');
+  var modalTitle = editModal.querySelector('.modal-title');
+  if (modalTitle) modalTitle.textContent = 'Edit Catatan';
+  
+  // Tampilkan modal edit
+  editModal.classList.add('show');
   setTimeout(function() { document.getElementById('editTitleInput').focus(); }, 120);
-  adjustModalForKeyboard('editModal');
-}
-
-function adjustModalForKeyboard(modalId) {
-  var modal = document.getElementById(modalId);
-  if (!modal) return;
-  var inputElements = modal.querySelectorAll('input, textarea');
-  inputElements.forEach(function(input) {
-    input.addEventListener('focus', function() {
-      setTimeout(function() {
-        if (document.activeElement === input) {
-          input.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-      }, 300);
-    });
-  });
 }
 
 function closeEditModal(e) {
