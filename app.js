@@ -201,6 +201,12 @@ function scrollBottom(el, smooth) {
   });
 }
 
+// Auto-resize textarea sesuai isi konten
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = el.scrollHeight + 'px';
+}
+
 // ========== NOTES ==========
 var notesCache = {};
 var activeNoteOptionMenu = null;
@@ -476,147 +482,48 @@ async function addNote() {
   loadNotes();
 }
 
-// Fungsi untuk menyesuaikan tinggi modal edit berdasarkan konten
-function adjustEditModalSize() {
-  var editModal = document.getElementById('editModal');
-  var modalBox = editModal.querySelector('.modal-box');
-  if (!editModal || !editModal.classList.contains('show')) return;
-  
-  // Hitung tinggi konten
-  var bodyEl = modalBox.querySelector('.modal-body');
-  if (!bodyEl) return;
-  
-  // Reset dulu ke auto
-  modalBox.style.maxHeight = '';
-  bodyEl.style.maxHeight = '';
-  
-  // Dapatkan tinggi viewport
-  var viewportHeight = window.innerHeight;
-  var paddingTotal = 40; // padding overlay 20px top + 20px bottom
-  
-  // Tinggi maksimal modal = viewport - padding
-  var maxModalHeight = viewportHeight - paddingTotal;
-  
-  // Hitung tinggi total konten (header + body)
-  var headerHeight = modalBox.querySelector('.modal-header').offsetHeight;
-  var bodyContentHeight = bodyEl.scrollHeight;
-  var totalContentHeight = headerHeight + bodyContentHeight + 40; // + padding body
-  
-  if (totalContentHeight > maxModalHeight) {
-    // Konten panjang: modal terbatas, body yang scroll
-    modalBox.style.maxHeight = maxModalHeight + 'px';
-    bodyEl.style.maxHeight = (maxModalHeight - headerHeight - 40) + 'px';
-    bodyEl.style.overflowY = 'auto';
-  } else {
-    // Konten pendek: modal sesuai tinggi konten, tidak ada scroll paksa
-    modalBox.style.maxHeight = totalContentHeight + 'px';
-    bodyEl.style.maxHeight = '';
-    bodyEl.style.overflowY = 'visible';
-  }
-}
-
-// Fungsi untuk menyesuaikan modal saat keyboard mobile terbuka
-function adjustForKeyboard() {
-  var editModal = document.getElementById('editModal');
-  if (!editModal || !editModal.classList.contains('show')) return;
-  
-  var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-  if (!isMobile) return;
-  
-  var activeEl = document.activeElement;
-  var isInputFocused = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA');
-  
-  if (isInputFocused) {
-    setTimeout(function() {
-      activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 100);
-  }
-}
-
+// ========== EDIT MODAL ==========
 function openEditModal(id) {
   var n = notesCache[id];
   if (!n) return;
-  
-  document.getElementById('editTitleInput').value = n.title || '';
-  document.getElementById('editBodyInput').value = n.content || '';
+
+  // Isi author row — sama persis seperti read modal
+  var authorColor = n.author === "Jef'z" ? '#007aff' : '#e91e8c';
+  document.getElementById('editAuthorRow').innerHTML =
+    '<span class="edit-author-dot" style="background:' + authorColor + '"></span>' +
+    esc(n.author || '');
+
+  // Isi judul
+  var titleEl = document.getElementById('editTitleInput');
+  titleEl.value = n.title || '';
+
+  // Isi konten
+  var bodyEl = document.getElementById('editBodyInput');
+  bodyEl.value = n.content || '';
+
+  // Simpan id
   document.getElementById('editNoteId').value = id;
-  
-  var editModal = document.getElementById('editModal');
-  var modalContent = editModal.querySelector('.modal-box');
-  
-  editModal.classList.add('modal-edit');
-  if (modalContent) modalContent.classList.add('modal-read');
-  
-  var modalTitle = editModal.querySelector('.modal-title');
-  if (modalTitle) modalTitle.textContent = 'Edit Catatan';
-  
-  editModal.classList.add('show');
-  
-  // Adjust size after modal is shown
+
+  // Tampilkan modal
+  document.getElementById('editModal').classList.add('show');
+
+  // Auto-resize setelah modal muncul
   setTimeout(function() {
-    adjustEditModalSize();
-  }, 50);
-  
-  // Pasang event listener untuk resize window (keyboard terbuka)
-  var resizeHandler = function() {
-    adjustEditModalSize();
-    adjustForKeyboard();
-  };
-  window.addEventListener('resize', resizeHandler);
-  editModal._resizeHandler = resizeHandler;
-  
-  // Pasang event listener untuk input focus/blur
-  var titleInput = document.getElementById('editTitleInput');
-  var bodyInput = document.getElementById('editBodyInput');
-  
-  var focusHandler = function() { setTimeout(adjustForKeyboard, 100); };
-  var inputHandler = function() { setTimeout(adjustEditModalSize, 50); };
-  
-  titleInput.addEventListener('focus', focusHandler);
-  titleInput.addEventListener('input', inputHandler);
-  bodyInput.addEventListener('focus', focusHandler);
-  bodyInput.addEventListener('input', inputHandler);
-  
-  editModal._focusHandler = focusHandler;
-  editModal._inputHandler = inputHandler;
-  
-  setTimeout(function() { document.getElementById('editTitleInput').focus(); }, 120);
+    autoResize(titleEl);
+    autoResize(bodyEl);
+    titleEl.focus();
+  }, 80);
 }
 
 function closeEditModal(e) {
   if (e && e.target !== document.getElementById('editModal')) return;
-  var editModal = document.getElementById('editModal');
-  var modalContent = editModal.querySelector('.modal-box');
-  
-  // Hapus event listeners
-  if (editModal._resizeHandler) {
-    window.removeEventListener('resize', editModal._resizeHandler);
-    delete editModal._resizeHandler;
-  }
-  if (editModal._focusHandler) {
-    var titleInput = document.getElementById('editTitleInput');
-    var bodyInput = document.getElementById('editBodyInput');
-    titleInput.removeEventListener('focus', editModal._focusHandler);
-    titleInput.removeEventListener('input', editModal._inputHandler);
-    bodyInput.removeEventListener('focus', editModal._focusHandler);
-    bodyInput.removeEventListener('input', editModal._inputHandler);
-    delete editModal._focusHandler;
-    delete editModal._inputHandler;
-  }
-  
-  editModal.classList.remove('show');
-  editModal.classList.remove('modal-edit');
-  if (modalContent) modalContent.classList.remove('modal-read');
-  
-  // Reset styles
-  if (modalContent) {
-    modalContent.style.maxHeight = '';
-    var bodyEl = modalContent.querySelector('.modal-body');
-    if (bodyEl) {
-      bodyEl.style.maxHeight = '';
-      bodyEl.style.overflowY = '';
-    }
-  }
+  document.getElementById('editModal').classList.remove('show');
+
+  // Reset ukuran textarea
+  var titleEl = document.getElementById('editTitleInput');
+  var bodyEl = document.getElementById('editBodyInput');
+  if (titleEl) titleEl.style.height = '';
+  if (bodyEl) bodyEl.style.height = '';
 }
 
 async function saveEditNote() {
