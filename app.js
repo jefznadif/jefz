@@ -202,58 +202,125 @@ function scrollBottom(el, smooth) {
 }
 
 // ========== NOTES ==========
+// Simpan data catatan di memory — hindari embed data di onclick string
+var notesCache = {};
+
 async function loadNotes() {
   var el = document.getElementById('notesList');
   el.innerHTML = '<p class="state-msg">Memuat...</p>';
   var res = await sb.from('notes').select('*').order('created_at', { ascending: true });
   if (res.error) { el.innerHTML = '<p class="state-msg err">Error: ' + res.error.message + '</p>'; return; }
   if (!res.data || !res.data.length) { el.innerHTML = '<p class="state-msg">Belum ada catatan.</p>'; return; }
+
   el.innerHTML = '';
+  notesCache = {}; // reset cache
+
   res.data.forEach(function(n) {
+    // Simpan data lengkap ke cache pakai id sebagai key
+    notesCache[n.id] = n;
+
     var isAdmin = currentAccount && currentAccount.role === 'admin';
     var isOwner = currentAccount && n.author === currentAccount.name;
     var canEdit = isAdmin || isOwner;
 
     var preview = (n.content || '').replace(/\n/g,' ').trim();
-    if (preview.length > 60) preview = preview.slice(0,60) + '…';
-    var authorColor = n.author === "Jef'z" ? '#3d5afe' : '#e91e8c';
+    if (preview.length > 60) preview = preview.slice(0, 60) + '…';
+    var authorColor = n.author === "Jef'z" ? '#007aff' : '#e91e8c';
 
     var d = document.createElement('div');
     d.className = 'note-card';
-    d.innerHTML =
-      '<div class="note-summary" onclick="openReadModal(\'' + n.id + '\')">' +
-        '<div class="note-sum-main">' +
-          '<span class="note-ttl">' + esc(n.title) + '</span>' +
-          (preview ? '<span class="note-preview">' + esc(preview) + '</span>' : '') +
-        '</div>' +
-        '<div class="note-sum-meta">' +
-          '<span class="note-author-dot" style="background:' + authorColor + '"></span>' +
-          '<span class="note-author-name">' + esc(n.author || '') + '</span>' +
-          '<span class="note-chevron">›</span>' +
-        '</div>' +
-      '</div>' +
-      (canEdit ?
-        '<div class="note-action-row">' +
-          '<button class="note-act-btn edit-btn" onclick="openEditModal(\'' + n.id + '\',\'' + esc(n.title) + '\',\'' + esc(n.content||'') + '\')">✏ Edit</button>' +
-          '<button class="note-act-btn del-btn" onclick="delNote(\'' + n.id + '\')">✕ Hapus</button>' +
-        '</div>' : '');
+    d.dataset.nid = n.id; // simpan id di dataset
+
+    // Summary — pakai textContent bukan innerHTML untuk data user
+    var summary = document.createElement('div');
+    summary.className = 'note-summary';
+
+    var sumMain = document.createElement('div');
+    sumMain.className = 'note-sum-main';
+
+    var ttl = document.createElement('span');
+    ttl.className = 'note-ttl';
+    ttl.textContent = n.title; // textContent aman, tidak perlu esc
+    sumMain.appendChild(ttl);
+
+    if (preview) {
+      var prev = document.createElement('span');
+      prev.className = 'note-preview';
+      prev.textContent = preview;
+      sumMain.appendChild(prev);
+    }
+
+    var sumMeta = document.createElement('div');
+    sumMeta.className = 'note-sum-meta';
+    sumMeta.innerHTML =
+      '<span class="note-author-dot" style="background:' + authorColor + '"></span>' +
+      '<span class="note-author-name">' + esc(n.author || '') + '</span>' +
+      '<span class="note-chevron">›</span>';
+
+    summary.appendChild(sumMain);
+    summary.appendChild(sumMeta);
+
+    // Klik summary → buka read modal
+    summary.addEventListener('click', function() { openReadModal(n.id); });
+
+    d.appendChild(summary);
+
+    if (canEdit) {
+      var actionRow = document.createElement('div');
+      actionRow.className = 'note-action-row';
+
+      var editBtn = document.createElement('button');
+      editBtn.className = 'note-act-btn edit-btn';
+      editBtn.textContent = '✏ Edit';
+      // Closure aman — tidak ada string manipulation
+      editBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        openEditModal(n.id);
+      });
+
+      var delBtn = document.createElement('button');
+      delBtn.className = 'note-act-btn del-btn';
+      delBtn.textContent = '✕ Hapus';
+      delBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        delNote(n.id);
+      });
+
+      actionRow.appendChild(editBtn);
+      actionRow.appendChild(delBtn);
+      d.appendChild(actionRow);
+    }
+
     el.appendChild(d);
   });
-  setTimeout(function() { el.scrollTop = el.scrollHeight; }, 50);
+
+  // Scroll ke bawah (catatan terbaru)
+  setTimeout(function() {
+    el.scrollTop = el.scrollHeight;
+  }, 60);
 }
 
 function openReadModal(id) {
-  sb.from('notes').select('*').eq('id', id).single().then(function(res) {
-    if (res.error || !res.data) return;
-    var n = res.data;
-    document.getElementById('readModalTitle').textContent = n.title;
-    var authorColor = n.author === "Jef'z" ? '#3d5afe' : '#e91e8c';
-    document.getElementById('readModalAuthor').innerHTML =
-      '<span class="read-author-dot" style="background:' + authorColor + '"></span>' + esc(n.author || '');
-    document.getElementById('readModalBody').textContent = n.content || '(Tidak ada isi)';
-    document.getElementById('readModalTs').textContent = fmtDate(n.created_at);
-    document.getElementById('readModal').classList.add('show');
-  });
+  // Ambil dari cache dulu (instant), fallback ke DB
+  var n = notesCache[id];
+  if (n) {
+    _renderReadModal(n);
+  } else {
+    sb.from('notes').select('*').eq('id', id).single().then(function(res) {
+      if (res.error || !res.data) return;
+      _renderReadModal(res.data);
+    });
+  }
+}
+
+function _renderReadModal(n) {
+  document.getElementById('readModalTitle').textContent = n.title;
+  var authorColor = n.author === "Jef'z" ? '#007aff' : '#e91e8c';
+  document.getElementById('readModalAuthor').innerHTML =
+    '<span class="read-author-dot" style="background:' + authorColor + '"></span>' + esc(n.author || '');
+  document.getElementById('readModalBody').textContent = n.content || '(Tidak ada isi)';
+  document.getElementById('readModalTs').textContent = fmtDate(n.created_at);
+  document.getElementById('readModal').classList.add('show');
 }
 function closeReadModal(e) {
   if (e && e.target !== document.getElementById('readModal')) return;
@@ -282,10 +349,13 @@ async function addNote() {
   loadNotes();
 }
 
-function openEditModal(id, oldTitle, oldContent) {
+// openEditModal sekarang hanya terima id — data diambil dari cache
+function openEditModal(id) {
+  var n = notesCache[id];
+  if (!n) return;
   document.getElementById('editNoteId').value = id;
-  document.getElementById('editTitleInput').value = decodeHtml(oldTitle);
-  document.getElementById('editBodyInput').value = decodeHtml(oldContent);
+  document.getElementById('editTitleInput').value = n.title || '';
+  document.getElementById('editBodyInput').value = n.content || '';
   document.getElementById('editModal').classList.add('show');
   setTimeout(function() { document.getElementById('editTitleInput').focus(); }, 120);
 }
