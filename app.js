@@ -19,7 +19,7 @@ if (!uid) { uid = 'u_' + Math.random().toString(36).slice(2,10); localStorage.se
 let chatChannel = null;
 let isChatActive = false;
 let chatLoaded = false;
-let seenMsgIds = new Set(); // track semua id yg sudah dirender
+let seenMsgIds = new Set();
 let pollTimer = null;
 
 // ========== BOOT ==========
@@ -202,10 +202,69 @@ function scrollBottom(el, smooth) {
 }
 
 // ========== NOTES ==========
-// Simpan data catatan di memory — hindari embed data di onclick string
 var notesCache = {};
+var activeNoteOptionMenu = null;
+
+function closeActiveOptionMenu() {
+  if (activeNoteOptionMenu && activeNoteOptionMenu.parentNode) {
+    activeNoteOptionMenu.remove();
+  }
+  activeNoteOptionMenu = null;
+}
+
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.note-chevron') && !e.target.closest('.read-author-option') && !e.target.closest('.note-options-menu')) {
+    closeActiveOptionMenu();
+  }
+});
+
+function showNoteOptions(cardElement, noteId, anchorElement) {
+  closeActiveOptionMenu();
+  
+  var n = notesCache[noteId];
+  if (!n) return;
+  
+  var isAdmin = currentAccount && currentAccount.role === 'admin';
+  var isOwner = currentAccount && n.author === currentAccount.name;
+  var canEdit = isAdmin || isOwner;
+  
+  if (!canEdit) return;
+  
+  var menu = document.createElement('div');
+  menu.className = 'note-options-menu';
+  
+  var editBtn = document.createElement('button');
+  editBtn.textContent = '✏ Edit';
+  editBtn.className = 'note-option-item edit';
+  editBtn.onclick = function(e) {
+    e.stopPropagation();
+    closeActiveOptionMenu();
+    openEditModal(noteId);
+  };
+  
+  var delBtn = document.createElement('button');
+  delBtn.textContent = '✕ Hapus';
+  delBtn.className = 'note-option-item delete';
+  delBtn.onclick = function(e) {
+    e.stopPropagation();
+    closeActiveOptionMenu();
+    delNote(noteId);
+  };
+  
+  menu.appendChild(editBtn);
+  menu.appendChild(delBtn);
+  
+  var rect = anchorElement.getBoundingClientRect();
+  menu.style.position = 'fixed';
+  menu.style.bottom = (window.innerHeight - rect.top + 6) + 'px';
+  menu.style.right = (window.innerWidth - rect.right) + 'px';
+  
+  document.body.appendChild(menu);
+  activeNoteOptionMenu = menu;
+}
 
 async function loadNotes() {
+  closeActiveOptionMenu();
   var el = document.getElementById('notesList');
   el.innerHTML = '<p class="state-msg">Memuat...</p>';
   var res = await sb.from('notes').select('*').order('created_at', { ascending: true });
@@ -213,10 +272,9 @@ async function loadNotes() {
   if (!res.data || !res.data.length) { el.innerHTML = '<p class="state-msg">Belum ada catatan.</p>'; return; }
 
   el.innerHTML = '';
-  notesCache = {}; // reset cache
+  notesCache = {};
 
   res.data.forEach(function(n) {
-    // Simpan data lengkap ke cache pakai id sebagai key
     notesCache[n.id] = n;
 
     var isAdmin = currentAccount && currentAccount.role === 'admin';
@@ -229,9 +287,8 @@ async function loadNotes() {
 
     var d = document.createElement('div');
     d.className = 'note-card';
-    d.dataset.nid = n.id; // simpan id di dataset
+    d.dataset.nid = n.id;
 
-    // Summary — pakai textContent bukan innerHTML untuk data user
     var summary = document.createElement('div');
     summary.className = 'note-summary';
 
@@ -240,7 +297,7 @@ async function loadNotes() {
 
     var ttl = document.createElement('span');
     ttl.className = 'note-ttl';
-    ttl.textContent = n.title; // textContent aman, tidak perlu esc
+    ttl.textContent = n.title;
     sumMain.appendChild(ttl);
 
     if (preview) {
@@ -252,56 +309,50 @@ async function loadNotes() {
 
     var sumMeta = document.createElement('div');
     sumMeta.className = 'note-sum-meta';
-    sumMeta.innerHTML =
-      '<span class="note-author-dot" style="background:' + authorColor + '"></span>' +
-      '<span class="note-author-name">' + esc(n.author || '') + '</span>' +
-      '<span class="note-chevron">›</span>';
+    
+    var authorDot = document.createElement('span');
+    authorDot.className = 'note-author-dot';
+    authorDot.style.background = authorColor;
+    
+    var authorName = document.createElement('span');
+    authorName.className = 'note-author-name';
+    authorName.textContent = n.author || '';
+    
+    sumMeta.appendChild(authorDot);
+    sumMeta.appendChild(authorName);
+    
+    var chevron = document.createElement('span');
+    chevron.className = 'note-chevron';
+    chevron.textContent = '›';
+    if (canEdit) {
+      chevron.style.cursor = 'pointer';
+      chevron.onclick = function(e) {
+        e.stopPropagation();
+        showNoteOptions(d, n.id, chevron);
+      };
+    } else {
+      chevron.style.opacity = '0.3';
+    }
+    sumMeta.appendChild(chevron);
 
     summary.appendChild(sumMain);
     summary.appendChild(sumMeta);
 
-    // Klik summary → buka read modal
-    summary.addEventListener('click', function() { openReadModal(n.id); });
+    summary.addEventListener('click', function(e) {
+      if (e.target === chevron || chevron.contains(e.target)) return;
+      openReadModal(n.id);
+    });
 
     d.appendChild(summary);
-
-    if (canEdit) {
-      var actionRow = document.createElement('div');
-      actionRow.className = 'note-action-row';
-
-      var editBtn = document.createElement('button');
-      editBtn.className = 'note-act-btn edit-btn';
-      editBtn.textContent = '✏ Edit';
-      // Closure aman — tidak ada string manipulation
-      editBtn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        openEditModal(n.id);
-      });
-
-      var delBtn = document.createElement('button');
-      delBtn.className = 'note-act-btn del-btn';
-      delBtn.textContent = '✕ Hapus';
-      delBtn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        delNote(n.id);
-      });
-
-      actionRow.appendChild(editBtn);
-      actionRow.appendChild(delBtn);
-      d.appendChild(actionRow);
-    }
-
     el.appendChild(d);
   });
 
-  // Scroll ke bawah (catatan terbaru)
   setTimeout(function() {
     el.scrollTop = el.scrollHeight;
   }, 60);
 }
 
 function openReadModal(id) {
-  // Ambil dari cache dulu (instant), fallback ke DB
   var n = notesCache[id];
   if (n) {
     _renderReadModal(n);
@@ -316,15 +367,83 @@ function openReadModal(id) {
 function _renderReadModal(n) {
   document.getElementById('readModalTitle').textContent = n.title;
   var authorColor = n.author === "Jef'z" ? '#007aff' : '#e91e8c';
-  document.getElementById('readModalAuthor').innerHTML =
-    '<span class="read-author-dot" style="background:' + authorColor + '"></span>' + esc(n.author || '');
+  var authorHtml = '<span class="read-author-dot" style="background:' + authorColor + '"></span>' + esc(n.author || '');
+  
+  var isAdmin = currentAccount && currentAccount.role === 'admin';
+  var isOwner = currentAccount && n.author === currentAccount.name;
+  var canEdit = isAdmin || isOwner;
+  
+  if (canEdit) {
+    authorHtml += '<span class="read-author-option" onclick="showReadModalOption(' + n.id + ', event)">⋮</span>';
+  }
+  
+  document.getElementById('readModalAuthor').innerHTML = authorHtml;
   document.getElementById('readModalBody').textContent = n.content || '(Tidak ada isi)';
   document.getElementById('readModalTs').textContent = fmtDate(n.created_at);
   document.getElementById('readModal').classList.add('show');
+  
+  window.currentReadNoteId = n.id;
 }
+
+function showReadModalOption(noteId, event) {
+  event.stopPropagation();
+  closeActiveOptionMenu();
+  
+  var n = notesCache[noteId];
+  if (!n) return;
+  
+  var isAdmin = currentAccount && currentAccount.role === 'admin';
+  var isOwner = currentAccount && n.author === currentAccount.name;
+  var canEdit = isAdmin || isOwner;
+  
+  if (!canEdit) return;
+  
+  var anchor = event.target;
+  var rect = anchor.getBoundingClientRect();
+  
+  var menu = document.createElement('div');
+  menu.className = 'note-options-menu';
+  
+  var editBtn = document.createElement('button');
+  editBtn.textContent = '✏ Edit';
+  editBtn.className = 'note-option-item edit';
+  editBtn.onclick = function(e) {
+    e.stopPropagation();
+    closeActiveOptionMenu();
+    closeReadModal();
+    setTimeout(function() {
+      openEditModal(noteId);
+    }, 200);
+  };
+  
+  var delBtn = document.createElement('button');
+  delBtn.textContent = '✕ Hapus';
+  delBtn.className = 'note-option-item delete';
+  delBtn.onclick = function(e) {
+    e.stopPropagation();
+    closeActiveOptionMenu();
+    closeReadModal();
+    setTimeout(function() {
+      delNote(noteId);
+    }, 200);
+  };
+  
+  menu.appendChild(editBtn);
+  menu.appendChild(delBtn);
+  
+  menu.style.position = 'fixed';
+  menu.style.bottom = (window.innerHeight - rect.top + 6) + 'px';
+  menu.style.right = (window.innerWidth - rect.right) + 'px';
+  
+  document.body.appendChild(menu);
+  activeNoteOptionMenu = menu;
+}
+
 function closeReadModal(e) {
   if (e && e.target !== document.getElementById('readModal')) return;
   document.getElementById('readModal').classList.remove('show');
+  window.currentReadNoteId = null;
+  closeActiveOptionMenu();
 }
 
 function openNoteModal() {
@@ -332,6 +451,7 @@ function openNoteModal() {
   document.getElementById('noteBodyInput').value = '';
   document.getElementById('noteModal').classList.add('show');
   setTimeout(function() { document.getElementById('noteTitleInput').focus(); }, 120);
+  adjustModalForKeyboard('noteModal');
 }
 function closeNoteModal(e) {
   if (e && e.target !== document.getElementById('noteModal')) return;
@@ -349,7 +469,6 @@ async function addNote() {
   loadNotes();
 }
 
-// openEditModal sekarang hanya terima id — data diambil dari cache
 function openEditModal(id) {
   var n = notesCache[id];
   if (!n) return;
@@ -358,7 +477,24 @@ function openEditModal(id) {
   document.getElementById('editBodyInput').value = n.content || '';
   document.getElementById('editModal').classList.add('show');
   setTimeout(function() { document.getElementById('editTitleInput').focus(); }, 120);
+  adjustModalForKeyboard('editModal');
 }
+
+function adjustModalForKeyboard(modalId) {
+  var modal = document.getElementById(modalId);
+  if (!modal) return;
+  var inputElements = modal.querySelectorAll('input, textarea');
+  inputElements.forEach(function(input) {
+    input.addEventListener('focus', function() {
+      setTimeout(function() {
+        if (document.activeElement === input) {
+          input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 300);
+    });
+  });
+}
+
 function closeEditModal(e) {
   if (e && e.target !== document.getElementById('editModal')) return;
   document.getElementById('editModal').classList.remove('show');
@@ -384,7 +520,7 @@ async function delNote(id) {
   loadNotes();
 }
 
-// ========== CHAT — ULTRA RESPONSIVE ==========
+// ========== CHAT ==========
 function buildMsgEl(m) {
   var isMe = currentAccount && m.sender_name === currentAccount.name;
   var d = document.createElement('div');
@@ -400,15 +536,13 @@ function buildMsgEl(m) {
   return d;
 }
 
-// Append satu pesan baru ke UI, skip kalau sudah ada
 function appendMsg(m, smooth) {
   var el = document.getElementById('chatList');
   if (!el) return;
   var id = String(m.id || '');
-  if (id && seenMsgIds.has(id)) return; // deduplicate
+  if (id && seenMsgIds.has(id)) return;
   if (id) seenMsgIds.add(id);
 
-  // Hapus placeholder
   var ph = el.querySelector('.state-msg');
   if (ph) el.innerHTML = '';
 
@@ -424,7 +558,6 @@ async function initChat() {
   var el = document.getElementById('chatList');
   el.innerHTML = '<p class="state-msg">Memuat...</p>';
 
-  // Load semua pesan
   var res = await sb.from('chat_messages').select('*').order('created_at', { ascending: true });
   if (res.error) { el.innerHTML = '<p class="state-msg err">Error: ' + res.error.message + '</p>'; return; }
 
@@ -441,17 +574,13 @@ async function initChat() {
     scrollBottom(el, false);
   }
 
-  // Start sync setelah data loaded
   startChatSync();
 }
 
 function startChatSync() {
-  // Bersihkan yang lama
   if (chatChannel) { try { sb.removeChannel(chatChannel); } catch(e){} chatChannel = null; }
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
 
-  // ======== REALTIME — Primary ========
-  // Buat channel fresh setiap kali
   chatChannel = sb.channel('chat_live_' + Date.now(), {
     config: { broadcast: { self: false } }
   })
@@ -459,12 +588,10 @@ function startChatSync() {
     { event: 'INSERT', schema: 'public', table: 'chat_messages' },
     function(payload) {
       if (!isChatActive || !payload.new) return;
-      // Kalau ini pesan dari diri sendiri & ada optimistic bubble, replace
       if (currentAccount && payload.new.sender_name === currentAccount.name) {
         var el = document.getElementById('chatList');
         var pend = el.querySelector('[data-pending]');
         if (pend) {
-          // Update id di optimistic bubble
           pend.dataset.msgId = String(payload.new.id);
           seenMsgIds.add(String(payload.new.id));
           pend.removeAttribute('data-pending');
@@ -476,17 +603,13 @@ function startChatSync() {
   )
   .subscribe();
 
-  // ======== POLLING — Fallback setiap 3 detik ========
   pollTimer = setInterval(async function() {
     if (!isChatActive || !chatLoaded) return;
-    // Ambil pesan yang belum ada di seenMsgIds
-    // Pakai query berdasarkan jumlah — cukup ambil 20 terbaru dan cek
     var res = await sb.from('chat_messages')
       .select('*')
       .order('created_at', { ascending: false })
       .limit(20);
     if (res.error || !res.data) return;
-    // Balik urutan (terlama dulu)
     var msgs = res.data.slice().reverse();
     msgs.forEach(function(m) {
       appendMsg(m, false);
@@ -502,14 +625,12 @@ async function sendMsg() {
   input.value = '';
   input.focus();
 
-  // Optimistic UI langsung
   var fakeMsg = {
     message: msg,
     sender_name: currentAccount.name,
     sender_role: currentAccount.role,
     user_id: uid,
     created_at: new Date().toISOString()
-    // id sengaja tidak ada supaya tidak masuk seenMsgIds
   };
   var el = document.getElementById('chatList');
   var ph = el.querySelector('.state-msg');
@@ -519,7 +640,6 @@ async function sendMsg() {
   el.appendChild(msgEl);
   scrollBottom(el, true);
 
-  // Kirim ke DB
   var res = await sb.from('chat_messages').insert([{
     message: msg,
     user_id: uid,
@@ -535,11 +655,9 @@ async function sendMsg() {
     return;
   }
 
-  // Insert berhasil — kalau realtime belum fire dalam 1 detik, poll manual
   setTimeout(async function() {
     var pend = el.querySelector('[data-pending]');
-    if (!pend) return; // sudah dihandle realtime
-    // Realtime belum datang, ambil dari DB
+    if (!pend) return;
     var r = await sb.from('chat_messages')
       .select('*').order('created_at', { ascending: false }).limit(1);
     if (r.data && r.data[0]) {
