@@ -374,7 +374,7 @@ function _renderReadModal(n) {
   var canEdit = isAdmin || isOwner;
   
   if (canEdit) {
-    authorHtml += '<span class="read-author-option" data-note-id="' + n.id + '" style="margin-left:auto; font-size:18px; color:var(--text3); cursor:pointer; padding:4px 0 4px 12px; line-height:1;">⋮</span>';
+    authorHtml += '<span class="read-author-option" data-note-id="' + n.id + '">⋮</span>';
   }
   
   document.getElementById('readModalAuthor').innerHTML = authorHtml;
@@ -476,6 +476,37 @@ async function addNote() {
   loadNotes();
 }
 
+// Keyboard adjustment untuk modal edit
+var originalModalEditPadding = null;
+
+function adjustEditModalForKeyboard() {
+  var editModal = document.getElementById('editModal');
+  if (!editModal || !editModal.classList.contains('show')) return;
+  
+  var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  if (!isMobile) return;
+  
+  // Simpan padding original jika belum
+  if (originalModalEditPadding === null) {
+    originalModalEditPadding = window.getComputedStyle(editModal).paddingBottom;
+  }
+  
+  var activeEl = document.activeElement;
+  var isInputFocused = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA');
+  
+  if (isInputFocused) {
+    // Kurangi padding bawah saat keyboard terbuka
+    editModal.style.paddingBottom = '10px';
+    // Scroll input ke view
+    setTimeout(function() {
+      activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 100);
+  } else {
+    // Kembalikan padding original
+    editModal.style.paddingBottom = originalModalEditPadding || '20px';
+  }
+}
+
 function openEditModal(id) {
   var n = notesCache[id];
   if (!n) return;
@@ -494,6 +525,19 @@ function openEditModal(id) {
   if (modalTitle) modalTitle.textContent = 'Edit Catatan';
   
   editModal.classList.add('show');
+  
+  // Pasang event listener untuk keyboard adjustment
+  var titleInput = document.getElementById('editTitleInput');
+  var bodyInput = document.getElementById('editBodyInput');
+  
+  var focusHandler = function() { setTimeout(adjustEditModalForKeyboard, 50); };
+  var blurHandler = function() { setTimeout(adjustEditModalForKeyboard, 50); };
+  
+  titleInput.addEventListener('focus', focusHandler);
+  titleInput.addEventListener('blur', blurHandler);
+  bodyInput.addEventListener('focus', focusHandler);
+  bodyInput.addEventListener('blur', blurHandler);
+  
   setTimeout(function() { document.getElementById('editTitleInput').focus(); }, 120);
 }
 
@@ -505,6 +549,9 @@ function closeEditModal(e) {
   editModal.classList.remove('show');
   editModal.classList.remove('modal-edit');
   if (modalContent) modalContent.classList.remove('modal-read');
+  
+  // Reset padding
+  editModal.style.paddingBottom = '';
 }
 
 async function saveEditNote() {
