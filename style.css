@@ -322,12 +322,8 @@ body {
 }
 .modal-read .read-ts { font-family:var(--ff-sys); font-size:11px; color:var(--text3); }
 
-/* EDIT MODAL - styling saja, tanpa paksaan posisi (posisi diatur JS) */
-.modal-edit .modal-box.modal-read {
-  max-width: 460px;
-  max-height: 88vh;
-}
-.modal-edit .edit-body {
+/* Edit body - untuk modal edit (struktur sudah sama dengan read modal) */
+.edit-body {
   font-family: var(--ff-serif);
   font-size: 16px;
   line-height: 1.8;
@@ -335,8 +331,8 @@ body {
   border-radius: 12px;
   padding: 14px;
 }
-.modal-edit .edit-body input,
-.modal-edit .edit-body textarea {
+.edit-body input,
+.edit-body textarea {
   width: 100%;
   font-family: var(--ff-serif);
   font-size: 16px;
@@ -349,11 +345,11 @@ body {
   outline: none;
   resize: none;
 }
-.modal-edit .edit-body textarea {
+.edit-body textarea {
   min-height: 120px;
 }
-.modal-edit .edit-body input:focus,
-.modal-edit .edit-body textarea:focus {
+.edit-body input:focus,
+.edit-body textarea:focus {
   outline: none;
 }
 
