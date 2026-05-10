@@ -322,17 +322,10 @@ body {
 }
 .modal-read .read-ts { font-family:var(--ff-sys); font-size:11px; color:var(--text3); }
 
-/* EDIT MODAL - mentok ke atas saat konten panjang, tapi tetap ada padding top */
-.modal-edit.modal-overlay {
-  align-items: flex-start;
-  padding-top: 10vh;
-}
-.modal-edit.modal-overlay .modal-box {
-  margin-bottom: auto;
-}
+/* EDIT MODAL - styling saja, tanpa paksaan posisi (posisi diatur JS) */
 .modal-edit .modal-box.modal-read {
   max-width: 460px;
-  max-height: 80vh;
+  max-height: 88vh;
 }
 .modal-edit .edit-body {
   font-family: var(--ff-serif);
