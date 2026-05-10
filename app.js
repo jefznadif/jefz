@@ -41,8 +41,10 @@ window.onload = function () {
 // ========== THEME ==========
 function applyTheme() {
   document.body.classList.toggle('dark', dark);
-  var btn = document.getElementById('themeBtn');
-  if (btn) btn.textContent = dark ? '☀️' : '🌙';
+  var icon = document.getElementById('themeBtnIcon');
+  var label = document.getElementById('themeBtnLabel');
+  if (icon) icon.textContent = dark ? '☀️' : '🌙';
+  if (label) label.textContent = dark ? 'Light Mode' : 'Dark Mode';
 }
 function toggleTheme() {
   dark = !dark;
