@@ -480,23 +480,19 @@ function openEditModal(id) {
   var n = notesCache[id];
   if (!n) return;
   
-  // Set nilai ke input
   document.getElementById('editTitleInput').value = n.title || '';
   document.getElementById('editBodyInput').value = n.content || '';
   document.getElementById('editNoteId').value = id;
   
-  // Siapkan modal edit dengan tampilan sama persis seperti read modal
   var editModal = document.getElementById('editModal');
   var modalContent = editModal.querySelector('.modal-box');
   
-  // Tambahkan class modal-read dan modal-edit untuk styling yang sama
   editModal.classList.add('modal-edit');
   if (modalContent) modalContent.classList.add('modal-read');
   
   var modalTitle = editModal.querySelector('.modal-title');
   if (modalTitle) modalTitle.textContent = 'Edit Catatan';
   
-  // Tampilkan modal edit
   editModal.classList.add('show');
   setTimeout(function() { document.getElementById('editTitleInput').focus(); }, 120);
 }
