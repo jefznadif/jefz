@@ -322,7 +322,19 @@ body {
 }
 .modal-read .read-ts { font-family:var(--ff-sys); font-size:11px; color:var(--text3); }
 
-/* ===== EDIT MODAL ===== */
+/* ===== EDIT MODAL - benar-benar menyesuaikan isi seperti modal baca ===== */
+.modal-edit .modal-box {
+  max-height: none;
+  height: auto;
+  width: 100%;
+  max-width: 460px;
+}
+.modal-edit .modal-body {
+  height: auto;
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 16px 20px 20px;
+}
 .modal-edit .modal-body input,
 .modal-edit .modal-body textarea {
   width: 100%;
@@ -342,9 +354,9 @@ body {
   border-color: var(--accent);
 }
 .modal-edit .modal-body textarea {
-  min-height: 140px;
+  min-height: 100px;
+  height: auto;
   resize: vertical;
-  font-family: var(--ff-serif);
 }
 
 /* ===== INPUTS ===== */
