@@ -476,34 +476,60 @@ async function addNote() {
   loadNotes();
 }
 
-// Keyboard adjustment untuk modal edit
-var originalModalEditPadding = null;
+// Fungsi untuk menyesuaikan tinggi modal edit berdasarkan konten
+function adjustEditModalSize() {
+  var editModal = document.getElementById('editModal');
+  var modalBox = editModal.querySelector('.modal-box');
+  if (!editModal || !editModal.classList.contains('show')) return;
+  
+  // Hitung tinggi konten
+  var bodyEl = modalBox.querySelector('.modal-body');
+  if (!bodyEl) return;
+  
+  // Reset dulu ke auto
+  modalBox.style.maxHeight = '';
+  bodyEl.style.maxHeight = '';
+  
+  // Dapatkan tinggi viewport
+  var viewportHeight = window.innerHeight;
+  var paddingTotal = 40; // padding overlay 20px top + 20px bottom
+  
+  // Tinggi maksimal modal = viewport - padding
+  var maxModalHeight = viewportHeight - paddingTotal;
+  
+  // Hitung tinggi total konten (header + body)
+  var headerHeight = modalBox.querySelector('.modal-header').offsetHeight;
+  var bodyContentHeight = bodyEl.scrollHeight;
+  var totalContentHeight = headerHeight + bodyContentHeight + 40; // + padding body
+  
+  if (totalContentHeight > maxModalHeight) {
+    // Konten panjang: modal terbatas, body yang scroll
+    modalBox.style.maxHeight = maxModalHeight + 'px';
+    bodyEl.style.maxHeight = (maxModalHeight - headerHeight - 40) + 'px';
+    bodyEl.style.overflowY = 'auto';
+  } else {
+    // Konten pendek: modal sesuai tinggi konten, tidak ada scroll paksa
+    modalBox.style.maxHeight = totalContentHeight + 'px';
+    bodyEl.style.maxHeight = '';
+    bodyEl.style.overflowY = 'visible';
+  }
+}
 
-function adjustEditModalForKeyboard() {
+// Fungsi untuk menyesuaikan modal saat keyboard mobile terbuka
+function adjustForKeyboard() {
   var editModal = document.getElementById('editModal');
   if (!editModal || !editModal.classList.contains('show')) return;
   
   var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
   if (!isMobile) return;
   
-  // Simpan padding original jika belum
-  if (originalModalEditPadding === null) {
-    originalModalEditPadding = window.getComputedStyle(editModal).paddingBottom;
-  }
-  
   var activeEl = document.activeElement;
   var isInputFocused = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA');
   
   if (isInputFocused) {
-    // Kurangi padding bawah saat keyboard terbuka
-    editModal.style.paddingBottom = '10px';
-    // Scroll input ke view
     setTimeout(function() {
       activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 100);
-  } else {
-    // Kembalikan padding original
-    editModal.style.paddingBottom = originalModalEditPadding || '20px';
   }
 }
 
@@ -526,17 +552,33 @@ function openEditModal(id) {
   
   editModal.classList.add('show');
   
-  // Pasang event listener untuk keyboard adjustment
+  // Adjust size after modal is shown
+  setTimeout(function() {
+    adjustEditModalSize();
+  }, 50);
+  
+  // Pasang event listener untuk resize window (keyboard terbuka)
+  var resizeHandler = function() {
+    adjustEditModalSize();
+    adjustForKeyboard();
+  };
+  window.addEventListener('resize', resizeHandler);
+  editModal._resizeHandler = resizeHandler;
+  
+  // Pasang event listener untuk input focus/blur
   var titleInput = document.getElementById('editTitleInput');
   var bodyInput = document.getElementById('editBodyInput');
   
-  var focusHandler = function() { setTimeout(adjustEditModalForKeyboard, 50); };
-  var blurHandler = function() { setTimeout(adjustEditModalForKeyboard, 50); };
+  var focusHandler = function() { setTimeout(adjustForKeyboard, 100); };
+  var inputHandler = function() { setTimeout(adjustEditModalSize, 50); };
   
   titleInput.addEventListener('focus', focusHandler);
-  titleInput.addEventListener('blur', blurHandler);
+  titleInput.addEventListener('input', inputHandler);
   bodyInput.addEventListener('focus', focusHandler);
-  bodyInput.addEventListener('blur', blurHandler);
+  bodyInput.addEventListener('input', inputHandler);
+  
+  editModal._focusHandler = focusHandler;
+  editModal._inputHandler = inputHandler;
   
   setTimeout(function() { document.getElementById('editTitleInput').focus(); }, 120);
 }
@@ -546,12 +588,35 @@ function closeEditModal(e) {
   var editModal = document.getElementById('editModal');
   var modalContent = editModal.querySelector('.modal-box');
   
+  // Hapus event listeners
+  if (editModal._resizeHandler) {
+    window.removeEventListener('resize', editModal._resizeHandler);
+    delete editModal._resizeHandler;
+  }
+  if (editModal._focusHandler) {
+    var titleInput = document.getElementById('editTitleInput');
+    var bodyInput = document.getElementById('editBodyInput');
+    titleInput.removeEventListener('focus', editModal._focusHandler);
+    titleInput.removeEventListener('input', editModal._inputHandler);
+    bodyInput.removeEventListener('focus', editModal._focusHandler);
+    bodyInput.removeEventListener('input', editModal._inputHandler);
+    delete editModal._focusHandler;
+    delete editModal._inputHandler;
+  }
+  
   editModal.classList.remove('show');
   editModal.classList.remove('modal-edit');
   if (modalContent) modalContent.classList.remove('modal-read');
   
-  // Reset padding
-  editModal.style.paddingBottom = '';
+  // Reset styles
+  if (modalContent) {
+    modalContent.style.maxHeight = '';
+    var bodyEl = modalContent.querySelector('.modal-body');
+    if (bodyEl) {
+      bodyEl.style.maxHeight = '';
+      bodyEl.style.overflowY = '';
+    }
+  }
 }
 
 async function saveEditNote() {
