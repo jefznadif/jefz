@@ -2,7 +2,7 @@
 *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
 html { background: transparent; }
 
-/* ===== DISABLE TEXT SELECTION (prevents interference with long-press) ===== */
+/* ===== DISABLE TEXT SELECTION ===== */
 body, .chat-list, .msg-row, .bubble, .note-card, .note-summary, .bottom-nav, .topbar, .notes-list {
   -webkit-user-select: none;
   -moz-user-select: none;
@@ -10,7 +10,6 @@ body, .chat-list, .msg-row, .bubble, .note-card, .note-summary, .bottom-nav, .to
   user-select: none;
   -webkit-touch-callout: none;
 }
-/* Allow selection only in input/textarea */
 input, textarea, .read-body, .edit-body-field, .edit-title-field {
   -webkit-user-select: text;
   -moz-user-select: text;
@@ -133,20 +132,11 @@ body { font-family:var(--ff-sys); color:var(--text); min-height:100vh; -webkit-f
   padding:0 16px;
   z-index:200;
   animation:fadeUp 0.18s ease;
-  border-radius:0;
 }
-.sel-cancel-btn {
-  background:rgba(255,255,255,0.22); border:none; color:white;
-  font-size:13px; font-weight:600; border-radius:20px;
-  padding:6px 14px; cursor:pointer; transition:background 0.15s;
-}
+.sel-cancel-btn { background:rgba(255,255,255,0.22); border:none; color:white; font-size:13px; font-weight:600; border-radius:20px; padding:6px 14px; cursor:pointer; transition:background 0.15s; }
 .sel-cancel-btn:active { background:rgba(255,255,255,0.38); }
 .sel-label { color:white; font-size:14px; font-weight:600; }
-.sel-delete-btn {
-  background:rgba(255,255,255,0.22); border:none; color:white;
-  font-size:13px; font-weight:600; border-radius:20px;
-  padding:6px 14px; cursor:pointer; transition:background 0.15s;
-}
+.sel-delete-btn { background:rgba(255,255,255,0.22); border:none; color:white; font-size:13px; font-weight:600; border-radius:20px; padding:6px 14px; cursor:pointer; transition:background 0.15s; }
 .sel-delete-btn:active { background:rgba(255,255,255,0.38); }
 
 /* ===== TABS ===== */
@@ -214,21 +204,8 @@ body { font-family:var(--ff-sys); color:var(--text); min-height:100vh; -webkit-f
   touch-action:pan-y;
 }
 @keyframes emojiIn { from{opacity:0;transform:translateY(10px) scale(0.95)} to{opacity:1;transform:translateY(0) scale(1)} }
-
-/* Emoji swipe indicator */
-.emoji-swipe-hint {
-  position:absolute; top:6px; left:50%; transform:translateX(-50%);
-  width:36px; height:3px; border-radius:3px;
-  background:var(--text3); opacity:0.3;
-  pointer-events:none;
-}
-
-.emoji-cat-tabs {
-  display:flex; overflow-x:auto; gap:0; padding:6px 8px;
-  border-bottom:1px solid var(--separator);
-  scrollbar-width:none; -ms-overflow-style:none;
-  touch-action:pan-x;
-}
+.emoji-swipe-hint { position:absolute; top:6px; left:50%; transform:translateX(-50%); width:36px; height:3px; border-radius:3px; background:var(--text3); opacity:0.3; pointer-events:none; }
+.emoji-cat-tabs { display:flex; overflow-x:auto; gap:0; padding:6px 8px; border-bottom:1px solid var(--separator); scrollbar-width:none; -ms-overflow-style:none; touch-action:pan-x; }
 .emoji-cat-tabs::-webkit-scrollbar { display:none; }
 .emoji-cat-tab { min-width:36px; height:36px; border:none; background:transparent; font-size:18px; cursor:pointer; border-radius:10px; transition:background 0.15s; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
 .emoji-cat-tab:hover { background:var(--input-bg); }
@@ -312,7 +289,7 @@ body.dark .reply-preview { background:rgba(255,255,255,0.08); }
 /* ===== NOTES ===== */
 #tabNotes.active-tab { position:fixed; top:var(--topbar-h); bottom:var(--nav-h); left:0; right:0; display:flex; flex-direction:column; overflow:hidden; background:transparent; }
 
-/* ===== COUNTDOWN — centered & styled ===== */
+/* ===== COUNTDOWN ===== */
 .notes-countdown-banner {
   flex-shrink:0;
   margin:12px 14px 0;
@@ -333,32 +310,14 @@ body.dark .reply-preview { background:rgba(255,255,255,0.08); }
   background: linear-gradient(90deg, #007aff, #e91e8c);
   -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
 }
-.countdown-value {
-  font-size:15px; font-weight:600; color:var(--text);
-  letter-spacing:-0.2px; line-height:1.5;
-  /* split the time segments with soft colors */
-}
-.countdown-value .cd-seg {
-  display:inline; margin:0 1px;
-}
-.countdown-value .cd-num {
-  font-size:18px; font-weight:800;
-  background: linear-gradient(135deg, #007aff, #e91e8c);
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
-  letter-spacing:-1px;
-}
-.countdown-value .cd-unit {
-  font-size:11px; color:var(--text3); font-weight:500;
-  margin-left:1px; margin-right:4px;
-}
+.countdown-value { font-size:15px; font-weight:600; color:var(--text); letter-spacing:-0.2px; line-height:1.5; }
+.countdown-value .cd-seg { display:inline; margin:0 1px; }
+.countdown-value .cd-num { font-size:18px; font-weight:800; background: linear-gradient(135deg, #007aff, #e91e8c); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; letter-spacing:-1px; }
+.countdown-value .cd-unit { font-size:11px; color:var(--text3); font-weight:500; margin-left:1px; margin-right:4px; }
 
 .notes-list { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; padding:10px 14px 90px; display:flex; flex-direction:column; gap:10px; will-change:scroll-position; contain:layout style; }
 
-/* Note card selected state */
-.note-card.note-selected {
-  outline: 2.5px solid var(--danger);
-  box-shadow: 0 0 0 4px rgba(255,59,48,0.10);
-}
+.note-card.note-selected { outline: 2.5px solid var(--danger); box-shadow: 0 0 0 4px rgba(255,59,48,0.10); }
 .note-card { background:var(--bg2); border-radius:16px; overflow:visible; border:1px solid var(--glass-border); backdrop-filter:var(--blur); -webkit-backdrop-filter:var(--blur); box-shadow:0 2px 14px rgba(0,0,0,0.06); transition:box-shadow 0.18s,transform 0.15s,outline 0.15s; contain:layout; }
 .note-card:active { transform:scale(0.987); }
 .note-summary { display:flex; align-items:center; gap:10px; padding:16px; cursor:pointer; transition:background 0.12s; border-radius:16px; }
@@ -378,7 +337,6 @@ body.dark .reply-preview { background:rgba(255,255,255,0.08); }
 .note-option-item.edit { color:var(--accent); }
 .note-option-item.delete { color:var(--danger); border-top:1px solid var(--separator); }
 
-/* Notes selection bar (reuse topbar pattern) */
 .notes-selection-bar {
   display:none;
   position:fixed;
@@ -439,7 +397,7 @@ body.dark .reply-preview { background:rgba(255,255,255,0.08); }
   display:flex; align-items:center;
   padding-bottom:env(safe-area-inset-bottom,0);
   transition:background 0.3s;
-  /* swipe track */
+  /* Swipe hanya di navbar, touch-action dibiarkan default */
   touch-action:pan-x;
   overflow:hidden;
 }
@@ -474,37 +432,13 @@ body.dark .reply-preview { background:rgba(255,255,255,0.08); }
 .modal-body { overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; padding:16px 20px 24px; display:flex; flex-direction:column; gap:12px; flex:1; min-height:0; }
 
 /* ===== CUSTOM CONFIRM MODAL ===== */
-.confirm-modal-box {
-  border-radius:24px !important;
-  max-width:320px !important;
-  width:90vw !important;
-  padding:0;
-  overflow:hidden;
-  animation:popIn 0.22s cubic-bezier(0.34,1.2,0.64,1) !important;
-}
+.confirm-modal-box { border-radius:24px !important; max-width:320px !important; width:90vw !important; padding:0; overflow:hidden; animation:popIn 0.22s cubic-bezier(0.34,1.2,0.64,1) !important; }
 #confirmModal { align-items:center !important; }
-.confirm-icon {
-  font-size:40px; text-align:center;
-  padding:28px 0 4px;
-  line-height:1;
-}
-.confirm-title {
-  font-size:17px; font-weight:700; color:var(--text);
-  text-align:center; padding:6px 24px 2px;
-  letter-spacing:-0.3px;
-}
-.confirm-msg {
-  font-size:14px; color:var(--text2);
-  text-align:center; padding:2px 24px 20px;
-  line-height:1.5;
-}
-.confirm-actions {
-  display:flex; border-top:1px solid var(--separator);
-}
-.confirm-btn-cancel, .confirm-btn-ok {
-  flex:1; padding:15px; border:none; font-size:16px; font-weight:600;
-  cursor:pointer; background:transparent; transition:background 0.15s;
-}
+.confirm-icon { font-size:40px; text-align:center; padding:28px 0 4px; line-height:1; }
+.confirm-title { font-size:17px; font-weight:700; color:var(--text); text-align:center; padding:6px 24px 2px; letter-spacing:-0.3px; }
+.confirm-msg { font-size:14px; color:var(--text2); text-align:center; padding:2px 24px 20px; line-height:1.5; }
+.confirm-actions { display:flex; border-top:1px solid var(--separator); }
+.confirm-btn-cancel, .confirm-btn-ok { flex:1; padding:15px; border:none; font-size:16px; font-weight:600; cursor:pointer; background:transparent; transition:background 0.15s; }
 .confirm-btn-cancel { color:var(--text3); border-right:1px solid var(--separator); }
 .confirm-btn-cancel:active { background:var(--input-bg); }
 .confirm-btn-ok { color:var(--danger); }
@@ -565,74 +499,159 @@ body.dark .reply-preview { background:rgba(255,255,255,0.08); }
 .toast.ok  { background: rgba(52,199,89,0.97); }
 .toast.err { background: rgba(255,59,48,0.97); }
 
-/* ===== LIGHTBOX — IG Style ===== */
+/* ===== LIGHTBOX — MODAL STYLE, TRANSPARAN BLUR DARI BINGKAI ===== */
+/*
+  Konsep: Lightbox sebagai modal overlay (sama polanya dengan modal lain).
+  - z-index 9000 → di atas semua konten termasuk topbar & navbar
+  - Navbar dan topbar TIDAK bergerak — lightbox adalah layer fixed overlay terpisah
+  - Background: transparan dengan blur kuat (frosted glass feel)
+  - Bingkai media: glass card dengan border & shadow, transparan blur
+  - Tidak lag karena tidak ada transform heavy saat navigate
+*/
 .lightbox {
-  display:none; position:fixed; inset:0;
-  z-index:9998; align-items:center; justify-content:center;
-  /* no fullscreen bg — show blur overlay instead */
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  align-items: center;
+  justify-content: center;
+  /* Background overlay transparan blur — BUKAN solid hitam */
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(32px) saturate(140%);
+  -webkit-backdrop-filter: blur(32px) saturate(140%);
+  /* Navbar & topbar tetap di bawah, tidak gerak */
 }
-.lightbox.show { display:flex; animation:overlayIn 0.22s ease; }
-.lightbox-overlay-bg {
-  position:absolute; inset:0;
-  background:rgba(0,0,0,0.82);
-  backdrop-filter:blur(28px) saturate(120%);
-  -webkit-backdrop-filter:blur(28px) saturate(120%);
-  z-index:0;
+.lightbox.show {
+  display: flex;
+  animation: lbFadeIn 0.22s ease;
 }
+@keyframes lbFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Tombol close — pojok kanan atas, konsisten dengan modal lain */
 .lightbox-close {
-  position:absolute; top:16px; right:16px;
-  width:36px; height:36px; border-radius:50%; border:none;
-  background:rgba(255,255,255,0.15); color:white;
-  cursor:pointer; display:flex; align-items:center; justify-content:center;
-  backdrop-filter:blur(8px); transition:all 0.18s; z-index:10;
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  /* Glass style seperti modal close */
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: all 0.18s;
+  z-index: 10;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.25);
 }
-.lightbox-close:active { background:rgba(255,255,255,0.28); transform:scale(0.92); }
+.lightbox-close:hover { background: rgba(255,255,255,0.28); transform: scale(1.08); }
+.lightbox-close:active { background: rgba(255,255,255,0.38); transform: scale(0.92); }
 
+/* Nav arrows */
 .lightbox-prev, .lightbox-next {
-  position:absolute; top:50%; transform:translateY(-50%);
-  width:40px; height:40px; border-radius:50%; border:none;
-  background:rgba(255,255,255,0.15); color:white;
-  cursor:pointer; display:flex; align-items:center; justify-content:center;
-  backdrop-filter:blur(8px); transition:all 0.18s; z-index:10;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.2);
+  background: rgba(255, 255, 255, 0.14);
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: all 0.18s;
+  z-index: 10;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.2);
 }
-.lightbox-prev { left:14px; }
-.lightbox-next { right:14px; }
-.lightbox-prev:active, .lightbox-next:active { background:rgba(255,255,255,0.28); transform:translateY(-50%) scale(0.92); }
+.lightbox-prev { left: 14px; }
+.lightbox-next { right: 14px; }
+.lightbox-prev:hover, .lightbox-next:hover { background: rgba(255,255,255,0.26); }
+.lightbox-prev:active { transform: translateY(-50%) scale(0.92); }
+.lightbox-next:active { transform: translateY(-50%) scale(0.92); }
 
-/* Media wrap — IG card style */
+/*
+  Bingkai media — TRANSPARAN BLUR (glass card)
+  Ini adalah "frame" yang menjadi pembungkus foto/video
+  Background transparan dengan blur, border glass, shadow
+*/
 .lightbox-media-wrap {
-  position:relative; z-index:5;
-  display:flex; align-items:center; justify-content:center;
-  width:min(92vw, 520px);
-  max-height:80vh;
-  border-radius:18px;
-  overflow:hidden;
-  background:rgba(0,0,0,0.3);
-  box-shadow:0 24px 80px rgba(0,0,0,0.6);
-  border:1px solid rgba(255,255,255,0.1);
-  touch-action:pan-y;
-  transition:transform 0.3s cubic-bezier(0.34,1.15,0.64,1);
+  position: relative;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Ukuran responsif */
+  width: min(92vw, 540px);
+  max-height: 80vh;
+  /* Glass card — transparan blur dari bingkai */
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 22px;
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.06) inset,
+    0 24px 80px rgba(0,0,0,0.5),
+    0 4px 24px rgba(0,0,0,0.3);
+  overflow: hidden;
+  /* Animasi masuk */
+  animation: lbCardIn 0.28s cubic-bezier(0.34, 1.15, 0.64, 1);
+  will-change: transform, opacity;
 }
+@keyframes lbCardIn {
+  from { opacity: 0; transform: scale(0.92) translateY(10px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* Media di dalam bingkai */
 .lightbox-media-wrap img,
 .lightbox-media-wrap video {
-  max-width:100%;
-  max-height:80vh;
-  width:auto; height:auto;
-  object-fit:contain;
-  display:block;
-  border-radius:0;
+  max-width: 100%;
+  max-height: 80vh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  display: block;
+  border-radius: 0; /* Bingkainya yang rounded, bukan media */
+  background: transparent;
 }
 
+/* Dots counter */
 .lightbox-counter {
-  position:absolute; bottom:20px; left:50%; transform:translateX(-50%);
-  z-index:10;
-  display:flex; gap:6px; align-items:center;
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  display: flex;
+  gap: 6px;
+  align-items: center;
 }
 .lb-dot {
-  width:6px; height:6px; border-radius:50%;
-  background:rgba(255,255,255,0.4); transition:all 0.2s;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.35);
+  transition: all 0.2s;
 }
-.lb-dot.active { background:white; transform:scale(1.3); }
+.lb-dot.active {
+  background: white;
+  transform: scale(1.3);
+}
 
 /* ===== STATE MSG ===== */
 .state-msg { text-align:center; padding:40px 20px; color:var(--text3); font-size:15px; }
