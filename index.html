@@ -10,6 +10,9 @@
 </head>
 <body>
 
+<!-- ===== GLOBAL ANIMATED BACKGROUND ===== -->
+<div id="globalBg"></div>
+
 <!-- ===== LOGIN PAGE ===== -->
 <div id="loginPage" class="page active">
   <div class="login-bg">
@@ -140,19 +143,18 @@
   </div>
 </div>
 
-<!-- MODAL: Edit Catatan — tampilan menyerupai Read Modal -->
+<!-- MODAL: Edit Catatan -->
 <div id="editModal" class="modal-overlay" onclick="closeEditModal(event)">
-  <div class="modal-box modal-read">
+  <div class="modal-box modal-edit-box">
     <div class="modal-header">
       <span class="modal-title">Edit Catatan</span>
       <button class="modal-close" onclick="closeEditModal()">✕</button>
     </div>
-    <div class="modal-body">
-      <!-- Row author (sama dengan read modal) -->
-      <div class="edit-author-row" id="editAuthorRow">
-        <!-- diisi via JS -->
-      </div>
-      <!-- Judul — background pill seperti read-body -->
+    <div class="modal-body modal-edit-body">
+      <!-- Row author -->
+      <div class="edit-author-row" id="editAuthorRow"></div>
+
+      <!-- Judul -->
       <div class="edit-title-wrap">
         <textarea
           id="editTitleInput"
@@ -162,15 +164,16 @@
           oninput="autoResize(this)"
         ></textarea>
       </div>
-      <!-- Isi — persis seperti .read-body tapi textarea -->
+
+      <!-- Isi — scrollable di dalam kolom -->
       <div class="edit-body-wrap">
         <textarea
           id="editBodyInput"
           class="edit-body-field"
           placeholder="Isi catatan..."
-          oninput="autoResize(this)"
         ></textarea>
       </div>
+
       <input type="hidden" id="editNoteId"/>
       <button class="btn-act" onclick="saveEditNote()">Simpan Perubahan</button>
     </div>
