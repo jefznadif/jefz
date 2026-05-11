@@ -145,16 +145,15 @@
 
 <!-- MODAL: Edit Catatan -->
 <div id="editModal" class="modal-overlay" onclick="closeEditModal(event)">
-  <div class="modal-box modal-edit-box">
+  <div class="modal-box modal-edit-box" id="editModalBox">
+    <!-- HEADER: tidak ikut scroll -->
     <div class="modal-header">
       <span class="modal-title">Edit Catatan</span>
       <button class="modal-close" onclick="closeEditModal()">✕</button>
     </div>
-    <div class="modal-body modal-edit-body">
-      <!-- Row author -->
+    <!-- STICKY TOP: author + judul tidak ikut scroll -->
+    <div class="edit-sticky-top">
       <div class="edit-author-row" id="editAuthorRow"></div>
-
-      <!-- Judul -->
       <div class="edit-title-wrap">
         <textarea
           id="editTitleInput"
@@ -164,8 +163,9 @@
           oninput="autoResize(this)"
         ></textarea>
       </div>
-
-      <!-- Isi — scrollable di dalam kolom -->
+    </div>
+    <!-- SCROLLABLE: hanya kolom isi teks -->
+    <div class="edit-scroll-area">
       <div class="edit-body-wrap">
         <textarea
           id="editBodyInput"
@@ -173,9 +173,11 @@
           placeholder="Isi catatan..."
         ></textarea>
       </div>
-
+    </div>
+    <!-- FOOTER: tombol simpan tidak ikut scroll -->
+    <div class="edit-footer">
       <input type="hidden" id="editNoteId"/>
-      <button class="btn-act" onclick="saveEditNote()">Simpan Perubahan</button>
+      <button class="btn-act btn-act-full" onclick="saveEditNote()">Simpan Perubahan</button>
     </div>
   </div>
 </div>
