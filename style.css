@@ -59,7 +59,7 @@ body {
   overscroll-behavior: none;
   transition: color 0.3s;
   position: relative;
-  background: var(--bg);
+  background: transparent; /* background ditangani #globalBg */
 }
 
 /* ===== GLOBAL ANIMATED ORB BACKGROUND ===== */
@@ -69,19 +69,19 @@ body {
   z-index: 0;
   pointer-events: none;
   overflow: hidden;
+  /* Base background sesuai tema — orb float di atasnya */
   background: var(--bg);
-  transition: background 0.5s;
+  transition: background 0.4s;
 }
 
-/* Orb base — setiap orb punya @keyframes sendiri via JS */
+/* Orb */
 .g-orb {
   position: absolute;
   border-radius: 50%;
   will-change: transform, opacity;
-  mix-blend-mode: normal;
 }
 
-/* stacking context */
+/* stacking context — semua konten halaman di atas #globalBg */
 .page, .topbar, .bottom-nav, .tab, .modal-overlay, #toast, #lightbox, .notes-fab-wrap {
   position: relative;
   z-index: 1;
@@ -313,8 +313,9 @@ body {
   border-radius: 20px 20px 0 0;
   width: 100%;
   max-width: 100%;
-  /* Tinggi default — JS akan override saat keyboard muncul */
+  /* Tinggi menyesuaikan isi, maksimum 90vh */
   max-height: 90vh;
+  /* Tidak flex penuh — biarkan konten menentukan tinggi */
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -376,12 +377,11 @@ body {
 .read-author-option:active { opacity:0.5; }
 
 /*
-  READ MODAL — body teks SELALU scroll di dalam kotak sendiri.
-  .modal-body sendiri tidak perlu scroll karena hanya berisi
-  3 elemen: author row, read-body (flex:1), dan timestamp.
+  READ MODAL — modal-body tetap scroll normal (menyesuaikan isi).
+  read-body punya scroll sendiri hanya saat konten terlalu panjang.
 */
 #readModal .modal-body {
-  overflow-y: hidden;  /* parent tidak scroll */
+  overflow-y: auto;
 }
 
 .modal-read .read-body {
@@ -394,9 +394,10 @@ body {
   background: var(--input-bg);
   border-radius: 12px;
   padding: 14px;
-  flex: 1;            /* isi sisa ruang */
-  min-height: 0;      /* penting untuk flex child */
-  overflow-y: auto;   /* hanya teks yang scroll */
+  /* Tumbuh mengisi ruang, dan bisa scroll sendiri */
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
 }
@@ -434,20 +435,18 @@ body {
   padding: 14px;
   border: 1.5px solid transparent;
   transition: border-color 0.18s;
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
+  /* Tidak flex:1 — biarkan tinggi mengikuti konten */
 }
 .edit-body-wrap:focus-within { border-color: var(--accent); }
 .edit-body-field {
-  width: 100%; flex: 1;
+  width: 100%;
   background: transparent; border: none; outline: none;
   font-family: var(--ff-serif); font-size: 16px; color: var(--text);
   line-height: 1.8; resize: none; padding: 0;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  min-height: 80px;
+  display: block;
+  min-height: 120px;   /* tinggi minimum nyaman */
+  /* tidak overflow scroll — biarkan auto-resize JS menangani */
+  overflow: hidden;
 }
 .edit-body-field::placeholder { color: var(--text3); }
 
