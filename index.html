@@ -146,7 +146,7 @@
   </div>
 
   <!-- BOTTOM NAV -->
-  <nav class="bottom-nav">
+  <nav class="bottom-nav" id="bottomNav">
     <button class="nav-item" onclick="goTab('Notes','Catatan',this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
       <span>Catatan</span>
@@ -225,12 +225,10 @@
       <button class="modal-close" id="uploadModalCloseBtn" onclick="cancelUploadModal()">✕</button>
     </div>
     <div class="modal-body">
-      <!-- File info -->
       <div>
         <div class="upload-preview-name" id="uploadFileName">—</div>
         <div class="upload-preview-type" id="uploadFileSize">—</div>
       </div>
-      <!-- Progress (hidden until upload starts) -->
       <div class="upload-progress-wrap" id="uploadProgressWrap" style="display:none">
         <div class="upload-progress-bar-track">
           <div class="upload-progress-bar-fill" id="uploadProgressFill"></div>
@@ -241,7 +239,6 @@
           <span class="upload-progress-pct" id="uploadPctLabel">0%</span>
         </div>
       </div>
-      <!-- Actions -->
       <div class="upload-modal-actions">
         <button class="btn-upload-cancel" id="uploadCancelBtn" onclick="cancelUploadModal()">Batal</button>
         <button class="btn-upload-go" id="uploadGoBtn" onclick="startGalleryUpload()">Upload</button>
@@ -250,13 +247,41 @@
   </div>
 </div>
 
+<!-- ===== CUSTOM CONFIRM MODAL ===== -->
+<div id="confirmModal" class="modal-overlay">
+  <div class="modal-box confirm-modal-box">
+    <div class="confirm-icon" id="confirmIcon">⚠️</div>
+    <div class="confirm-title" id="confirmTitle">Konfirmasi</div>
+    <div class="confirm-msg" id="confirmMsg">Apakah kamu yakin?</div>
+    <div class="confirm-actions">
+      <button class="confirm-btn-cancel" id="confirmCancelBtn">Batal</button>
+      <button class="confirm-btn-ok" id="confirmOkBtn">Ya</button>
+    </div>
+  </div>
+</div>
+
 <!-- TOAST -->
 <div id="toast" class="toast"></div>
 
-<!-- LIGHTBOX -->
+<!-- ===== LIGHTBOX (IG-style) ===== -->
 <div id="lightbox" class="lightbox">
-  <button class="lightbox-close" onclick="closeLightbox()">✕</button>
-  <img id="lightboxImg" src="" alt=""/>
+  <div class="lightbox-overlay-bg"></div>
+  <button class="lightbox-close" onclick="closeLightbox()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="18" height="18"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+  </button>
+  <!-- Nav arrows -->
+  <button class="lightbox-prev" id="lightboxPrev" onclick="lightboxNav(-1)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="20" height="20"><polyline points="15 18 9 12 15 6"/></svg>
+  </button>
+  <button class="lightbox-next" id="lightboxNext" onclick="lightboxNav(1)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="20" height="20"><polyline points="9 18 15 12 9 6"/></svg>
+  </button>
+  <!-- Media container (swipeable) -->
+  <div class="lightbox-media-wrap" id="lightboxMediaWrap">
+    <img id="lightboxImg" src="" alt="" draggable="false"/>
+  </div>
+  <!-- Counter -->
+  <div class="lightbox-counter" id="lightboxCounter"></div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
