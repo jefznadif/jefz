@@ -24,21 +24,42 @@ let countdownTimer = null;
 let notesLoaded = false;
 let galleryLoaded = false;
 
-// Reply state
 let replyTarget = null;
-
-// Emoji picker state
 let emojiPickerOpen = false;
 
-// ========== MULTI-SELECT STATE ==========
-// selectedMsgIds: Set of string IDs currently selected
+// multi-select (chat)
 let selectedMsgIds = new Set();
-// selectionModeActive: true setelah long-press pertama
 let selectionModeActive = false;
 
-// Upload state
+// multi-select (notes)
+let selectedNoteIds = new Set();
+let noteSelectionModeActive = false;
+
+// upload
 let pendingUploadFile = null;
 let uploadXHR = null;
+
+// ========== CUSTOM CONFIRM MODAL ==========
+let _confirmResolve = null;
+
+function showConfirm(msg, opts) {
+  opts = opts || {};
+  return new Promise(function(resolve) {
+    _confirmResolve = resolve;
+    var el = document.getElementById('confirmModal');
+    document.getElementById('confirmIcon').textContent = opts.icon || '⚠️';
+    document.getElementById('confirmTitle').textContent = opts.title || 'Konfirmasi';
+    document.getElementById('confirmMsg').textContent = msg;
+    var okBtn = document.getElementById('confirmOkBtn');
+    var cancelBtn = document.getElementById('confirmCancelBtn');
+    okBtn.textContent = opts.okText || 'Ya';
+    cancelBtn.textContent = opts.cancelText || 'Batal';
+    okBtn.className = 'confirm-btn-ok' + (opts.safe ? ' safe' : '');
+    okBtn.onclick = function() { el.classList.remove('show'); _confirmResolve && _confirmResolve(true); _confirmResolve = null; };
+    cancelBtn.onclick = function() { el.classList.remove('show'); _confirmResolve && _confirmResolve(false); _confirmResolve = null; };
+    el.classList.add('show');
+  });
+}
 
 // ========== ANIMATED ORB BACKGROUND ==========
 (function initOrbBg() {
@@ -107,8 +128,16 @@ function startCountdown() {
     var labelEl=document.getElementById('countdownLabel'), valEl=document.getElementById('countdown');
     if (!labelEl||!valEl) return;
     labelEl.textContent = isCountdown ? "Menuju 18 Maret 2027 ♡" : "Sudah bersama selama ♡";
-    valEl.textContent = (isCountdown?'':'-')+years+' Tahun '+months+' Bulan '+days+' Hari '+hours+' Jam '+minutes+' Menit '+seconds+' Detik';
+    // Styled segments with numbers highlighted
+    valEl.innerHTML =
+      seg(years,'Thn') + seg(months,'Bln') + seg(days,'Hari') +
+      '<br>' +
+      seg(hours,'Jam') + seg(minutes,'Mnt') + seg(seconds,'Dtk');
   }
+  function seg(n, unit) {
+    return '<span class="cd-seg"><span class="cd-num">' + pad(n) + '</span><span class="cd-unit">' + unit + '</span></span>';
+  }
+  function pad(n) { return n < 10 ? '0'+n : n; }
   tick(); countdownTimer = setInterval(tick, 1000);
 }
 function stopCountdown() { if (countdownTimer){clearInterval(countdownTimer);countdownTimer=null;} }
@@ -166,6 +195,7 @@ window.onload = function() {
     currentAccount={ name:accName, role:sessionStorage.getItem('accRole'), color:ACCOUNTS[accName]?ACCOUNTS[accName].color:'#3d5afe' };
     showDash();
   }
+  initNavbarSwipe();
 };
 
 // ========== THEME ==========
@@ -196,6 +226,63 @@ function fmtTime(d) { return new Date(d).toLocaleTimeString('id-ID',{hour:'2-dig
 function scrollBottom(el, smooth) { if(!el)return; requestAnimationFrame(function(){el.scrollTo({top:el.scrollHeight,behavior:smooth?'smooth':'instant'});}); }
 function autoResize(el) { el.style.height='auto'; el.style.height=el.scrollHeight+'px'; }
 function fmtBytes(bytes) { if(bytes<1024)return bytes+' B'; if(bytes<1048576)return(bytes/1024).toFixed(1)+' KB'; return(bytes/1048576).toFixed(2)+' MB'; }
+
+// ========== NAVBAR SWIPE ==========
+// Tab order: Notes(0), Chat(1), Gallery(2)
+const TAB_ORDER = ['Notes', 'Chat', 'Gallery'];
+const TAB_TITLES = { Notes:'Catatan', Chat:'ChatRoom', Gallery:'Gallery' };
+
+function initNavbarSwipe() {
+  // Swipe on the entire dash page content area (not just nav bar) to switch tabs
+  var dashPage = document.getElementById('dashPage');
+  if (!dashPage) return;
+  var startX = 0, startY = 0, navSwipeActive = false;
+
+  dashPage.addEventListener('touchstart', function(e) {
+    // Only swipe from edges for tab switch (to avoid conflict with chat/scroll)
+    var touch = e.touches[0];
+    startX = touch.clientX;
+    startY = touch.clientY;
+    navSwipeActive = true;
+  }, { passive: true });
+
+  dashPage.addEventListener('touchmove', function(e) {
+    if (!navSwipeActive) return;
+    var dx = e.touches[0].clientX - startX;
+    var dy = Math.abs(e.touches[0].clientY - startY);
+    // Cancel if more vertical than horizontal
+    if (dy > Math.abs(dx) + 10) { navSwipeActive = false; }
+  }, { passive: true });
+
+  dashPage.addEventListener('touchend', function(e) {
+    if (!navSwipeActive) return;
+    var dx = e.changedTouches[0].clientX - startX;
+    var dy = Math.abs(e.changedTouches[0].clientY - startY);
+    navSwipeActive = false;
+
+    // Must be a clear horizontal swipe
+    if (Math.abs(dx) < 80 || dy > 60) return;
+
+    // Don't trigger if inside an open modal
+    if (document.querySelector('.modal-overlay.show')) return;
+    // Don't trigger if in lightbox
+    if (document.getElementById('lightbox').classList.contains('show')) return;
+
+    var curTab = sessionStorage.getItem('activeTab') || 'Chat';
+    var idx = TAB_ORDER.indexOf(curTab);
+    if (idx === -1) return;
+
+    var next = idx;
+    if (dx < 0) next = Math.min(idx + 1, TAB_ORDER.length - 1); // swipe left → next
+    else         next = Math.max(idx - 1, 0);                     // swipe right → prev
+
+    if (next !== idx) {
+      var newTab = TAB_ORDER[next];
+      sessionStorage.setItem('activeTab', newTab);
+      activateTab(newTab);
+    }
+  });
+}
 
 // ========== LOGIN ==========
 var pendingAccount = null;
@@ -237,16 +324,16 @@ function doLogin() {
     document.getElementById('pinInput').focus();
   }
 }
-function doLogout() {
-  if (!confirm('Yakin mau logout?')) return;
+async function doLogout() {
+  var ok = await showConfirm('Yakin mau logout?', { icon:'👋', title:'Logout', okText:'Logout', cancelText:'Batal' });
+  if (!ok) return;
   stopChatSync(); stopCountdown();
-  exitSelectionMode();
+  exitSelectionMode(); exitNoteSelectionMode();
   sessionStorage.clear();
   currentAccount=null; pendingAccount=null;
   chatLoaded=false; notesLoaded=false; galleryLoaded=false;
   seenMsgIds.clear(); replyTarget=null;
-  clearReplyBanner();
-  closeEmojiPicker();
+  clearReplyBanner(); closeEmojiPicker();
   document.getElementById('stepPin').style.display='none';
   document.getElementById('stepAccount').style.display='block';
   document.getElementById('pinInput').value='';
@@ -277,14 +364,13 @@ function showDash() {
 // ========== TABS ==========
 function goTab(name, title, btn) { sessionStorage.setItem('activeTab',name); activateTab(name); }
 function activateTab(name) {
-  var titles={Chat:'ChatRoom',Notes:'Catatan',Gallery:'Gallery'};
   document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active-tab');});
   document.querySelectorAll('.nav-item').forEach(function(b){
     var lbl=b.querySelector('span')?b.querySelector('span').textContent:'';
     b.classList.toggle('active',(name==='Chat'&&lbl==='Chat')||(name==='Notes'&&lbl==='Catatan')||(name==='Gallery'&&lbl==='Gallery'));
   });
   document.getElementById('tab'+name).classList.add('active-tab');
-  document.getElementById('topbarTitle').textContent=titles[name]||name;
+  document.getElementById('topbarTitle').textContent = TAB_TITLES[name] || name;
   if (name!=='Chat'){isChatActive=false;if(pollTimer){clearInterval(pollTimer);pollTimer=null;}}
   else { isChatActive=true; }
   if (name==='Notes') startCountdown(); else stopCountdown();
@@ -293,49 +379,29 @@ function activateTab(name) {
   if (name==='Gallery'&&!galleryLoaded) loadGallery();
 }
 
-// ========== MULTI-SELECT MODE ==========
-
-/**
- * Masuk ke selection mode & tambah msgId ke set.
- * Dipanggil saat long-press pertama kali.
- */
+// ========== MULTI-SELECT MODE (CHAT) ==========
 function enterSelectionMode(msgId) {
   selectionModeActive = true;
   _addToSelection(msgId);
   _renderSelectionBar();
 }
-
-/**
- * Toggle select/unselect sebuah bubble saat selection mode aktif.
- * Dipanggil saat klik biasa (tanpa hold) pada bubble.
- */
 function toggleMsgSelection(msgId) {
   if (!selectionModeActive) return;
-  if (selectedMsgIds.has(msgId)) {
-    _removeFromSelection(msgId);
-  } else {
-    _addToSelection(msgId);
-  }
-  // Jika semua bubble sudah di-unselect → auto-cancel
-  if (selectedMsgIds.size === 0) {
-    exitSelectionMode();
-    return;
-  }
+  if (selectedMsgIds.has(msgId)) _removeFromSelection(msgId);
+  else _addToSelection(msgId);
+  if (selectedMsgIds.size === 0) { exitSelectionMode(); return; }
   _renderSelectionBar();
 }
-
 function _addToSelection(msgId) {
   selectedMsgIds.add(msgId);
   var row = document.querySelector('[data-msg-id="'+msgId+'"]');
   if (row) row.classList.add('msg-selected');
 }
-
 function _removeFromSelection(msgId) {
   selectedMsgIds.delete(msgId);
   var row = document.querySelector('[data-msg-id="'+msgId+'"]');
   if (row) row.classList.remove('msg-selected');
 }
-
 function _renderSelectionBar() {
   var bar = document.getElementById('selectionBar');
   if (!bar) {
@@ -344,21 +410,14 @@ function _renderSelectionBar() {
     bar.className = 'selection-bar';
     document.querySelector('.topbar').appendChild(bar);
   }
-
-  // Cek apakah user boleh hapus semua yg dipilih
   var isAdmin = currentAccount && currentAccount.role === 'admin';
   var canDeleteAll = isAdmin || _allSelectedAreOwn();
-
   bar.innerHTML =
     '<button class="sel-cancel-btn" onclick="exitSelectionMode()">✕ Batal</button>' +
     '<span class="sel-label">'+selectedMsgIds.size+' dipilih</span>' +
-    (canDeleteAll
-      ? '<button class="sel-delete-btn" onclick="delSelectedMsgs()">🗑 Hapus</button>'
-      : '<span style="width:74px"></span>');
+    (canDeleteAll ? '<button class="sel-delete-btn" onclick="delSelectedMsgs()">🗑 Hapus</button>' : '<span style="width:74px"></span>');
   bar.style.display = 'flex';
 }
-
-/** Cek apakah semua bubble yang dipilih milik currentAccount sendiri */
 function _allSelectedAreOwn() {
   for (var id of selectedMsgIds) {
     var row = document.querySelector('[data-msg-id="'+id+'"]');
@@ -366,7 +425,6 @@ function _allSelectedAreOwn() {
   }
   return true;
 }
-
 function exitSelectionMode() {
   selectionModeActive = false;
   selectedMsgIds.clear();
@@ -374,14 +432,13 @@ function exitSelectionMode() {
   var bar = document.getElementById('selectionBar');
   if (bar) bar.style.display = 'none';
 }
-
 async function delSelectedMsgs() {
   if (selectedMsgIds.size === 0) return;
   var ids = Array.from(selectedMsgIds);
-  var label = ids.length === 1 ? 'pesan ini' : ids.length + ' pesan ini';
-  if (!confirm('Hapus ' + label + '?')) return;
+  var label = ids.length === 1 ? 'pesan ini' : ids.length + ' pesan';
+  var ok = await showConfirm('Hapus ' + label + '?', { icon:'🗑', title:'Hapus Pesan', okText:'Hapus', cancelText:'Batal' });
+  if (!ok) return;
   exitSelectionMode();
-  // Hapus dari DB semua sekaligus
   var res = await sb.from('chat_messages').delete().in('id', ids);
   if (res.error) { toast('Gagal hapus', false); return; }
   ids.forEach(function(id) {
@@ -390,6 +447,76 @@ async function delSelectedMsgs() {
     seenMsgIds.delete(String(id));
   });
   toast(ids.length === 1 ? 'Pesan dihapus' : ids.length + ' pesan dihapus');
+}
+
+// ========== MULTI-SELECT MODE (NOTES) ==========
+function enterNoteSelectionMode(noteId) {
+  noteSelectionModeActive = true;
+  _addToNoteSelection(noteId);
+  _renderNoteSelectionBar();
+}
+function toggleNoteSelection(noteId) {
+  if (!noteSelectionModeActive) return;
+  if (selectedNoteIds.has(noteId)) _removeFromNoteSelection(noteId);
+  else _addToNoteSelection(noteId);
+  if (selectedNoteIds.size === 0) { exitNoteSelectionMode(); return; }
+  _renderNoteSelectionBar();
+}
+function _addToNoteSelection(noteId) {
+  selectedNoteIds.add(noteId);
+  var card = document.querySelector('[data-nid="'+noteId+'"]');
+  if (card) card.classList.add('note-selected');
+}
+function _removeFromNoteSelection(noteId) {
+  selectedNoteIds.delete(noteId);
+  var card = document.querySelector('[data-nid="'+noteId+'"]');
+  if (card) card.classList.remove('note-selected');
+}
+function _renderNoteSelectionBar() {
+  var bar = document.getElementById('noteSelectionBar');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'noteSelectionBar';
+    bar.className = 'notes-selection-bar';
+    document.getElementById('dashPage').appendChild(bar);
+  }
+  var isAdmin = currentAccount && currentAccount.role === 'admin';
+  var canDeleteAll = isAdmin || _allSelectedNotesOwn();
+  bar.innerHTML =
+    '<button class="sel-cancel-btn" onclick="exitNoteSelectionMode()">✕ Batal</button>' +
+    '<span class="sel-label">'+selectedNoteIds.size+' catatan</span>' +
+    (canDeleteAll ? '<button class="sel-delete-btn" onclick="delSelectedNotes()">🗑 Hapus</button>' : '<span style="width:74px"></span>');
+  bar.classList.add('show');
+}
+function _allSelectedNotesOwn() {
+  for (var id of selectedNoteIds) {
+    var n = notesCache[id];
+    if (!n || !currentAccount || n.author !== currentAccount.name) return false;
+  }
+  return true;
+}
+function exitNoteSelectionMode() {
+  noteSelectionModeActive = false;
+  selectedNoteIds.clear();
+  document.querySelectorAll('.note-selected').forEach(function(el){ el.classList.remove('note-selected'); });
+  var bar = document.getElementById('noteSelectionBar');
+  if (bar) bar.classList.remove('show');
+}
+async function delSelectedNotes() {
+  if (selectedNoteIds.size === 0) return;
+  var ids = Array.from(selectedNoteIds);
+  var label = ids.length === 1 ? 'catatan ini' : ids.length + ' catatan';
+  var ok = await showConfirm('Hapus ' + label + '?', { icon:'🗑', title:'Hapus Catatan', okText:'Hapus', cancelText:'Batal' });
+  if (!ok) return;
+  exitNoteSelectionMode();
+  var res = await sb.from('notes').delete().in('id', ids);
+  if (res.error) { toast('Gagal hapus', false); return; }
+  ids.forEach(function(id) {
+    var card = document.querySelector('[data-nid="'+id+'"]');
+    if (card) card.remove();
+    delete notesCache[id];
+  });
+  toast(ids.length === 1 ? 'Catatan dihapus' : ids.length + ' catatan dihapus');
 }
 
 // ========== NOTES ==========
@@ -402,9 +529,11 @@ document.addEventListener('click', function(e){
   if (!e.target.closest('.note-chevron')&&!e.target.closest('.read-author-option')&&!e.target.closest('.note-options-menu')) closeActiveOptionMenu();
   if (!e.target.closest('.emoji-picker-wrap')&&!e.target.closest('.emoji-trigger')) closeEmojiPicker();
   if (!e.target.closest('.msg-action-menu')&&!e.target.closest('.bubble-action-btn')) closeMsgActionMenu();
-  // Klik di luar bubble saat selection mode → exit
   if (selectionModeActive && !e.target.closest('[data-msg-id]') && !e.target.closest('#selectionBar')) {
     exitSelectionMode();
+  }
+  if (noteSelectionModeActive && !e.target.closest('[data-nid]') && !e.target.closest('#noteSelectionBar')) {
+    exitNoteSelectionMode();
   }
 });
 
@@ -458,10 +587,45 @@ async function loadNotes() {
     else chevron.style.opacity='0.3';
     sumMeta.appendChild(chevron);
     summary.appendChild(sumMain); summary.appendChild(sumMeta);
-    summary.addEventListener('click',function(e){if(e.target===chevron||chevron.contains(e.target))return;openReadModal(n.id);});
+    summary.addEventListener('click',function(e){
+      if (e.target===chevron||chevron.contains(e.target)) return;
+      // If note selection mode → toggle
+      if (noteSelectionModeActive) { toggleNoteSelection(String(n.id)); return; }
+      openReadModal(n.id);
+    });
+    // Long press on note card → enter note selection mode
+    initNoteLongPress(d, n.id);
     d.appendChild(summary); frag.appendChild(d);
   });
   el.appendChild(frag);
+}
+
+function initNoteLongPress(cardEl, noteId) {
+  var pressTimer = null, moved = false;
+  var startX = 0, startY = 0;
+  cardEl.addEventListener('touchstart', function(e) {
+    if (e.target.closest('.note-chevron')) return;
+    moved = false;
+    startX = e.touches[0].clientX; startY = e.touches[0].clientY;
+    if (noteSelectionModeActive) return; // already in mode
+    pressTimer = setTimeout(function() {
+      if (!moved) {
+        if (navigator.vibrate) navigator.vibrate(40);
+        enterNoteSelectionMode(String(noteId));
+      }
+    }, 500);
+  }, { passive: true });
+  cardEl.addEventListener('touchmove', function(e) {
+    var dx = Math.abs(e.touches[0].clientX - startX);
+    var dy = Math.abs(e.touches[0].clientY - startY);
+    if (dx > 8 || dy > 8) { moved = true; clearTimeout(pressTimer); }
+  }, { passive: true });
+  cardEl.addEventListener('touchend', function() {
+    clearTimeout(pressTimer); moved = false;
+  });
+  cardEl.addEventListener('touchcancel', function() {
+    clearTimeout(pressTimer); moved = false;
+  });
 }
 
 function openReadModal(id) {
@@ -553,7 +717,8 @@ async function saveEditNote() {
   notesLoaded=false; loadNotes();
 }
 async function delNote(id) {
-  if (!confirm('Hapus catatan ini?')) return;
+  var ok = await showConfirm('Hapus catatan ini?', { icon:'🗑', title:'Hapus Catatan', okText:'Hapus', cancelText:'Batal' });
+  if (!ok) return;
   var res=await sb.from('notes').delete().eq('id',id);
   if (res.error){toast('Gagal hapus',false);return;}
   toast('Dihapus'); notesLoaded=false; loadNotes();
@@ -562,10 +727,10 @@ async function delNote(id) {
 // ========== EMOJI PICKER ==========
 const EMOJI_CATEGORIES = [
   { icon:'😀', label:'Smileys', emojis:['😀','😃','😄','😁','😆','😅','🤣','😂','🙂','🙃','😉','😊','😇','🥰','😍','🤩','😘','😗','☺️','😚','😙','🥲','😋','😛','😜','🤪','😝','🤑','🤗','🤭','🤫','🤔','🤐','🤨','😐','😑','😶','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🤧','🥵','🥶','🥴','😵','💫','🤯','🤠','🥳','🥸','😎','🤓','🧐','😕','😟','🙁','☹️','😮','😯','😲','😳','🥺','😦','😧','😨','😰','😥','😢','😭','😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡','😠','🤬','😈','👿','💀','☠️','💩','🤡','👹','👺','👻','👽','👾','🤖'] },
-  { icon:'❤️', label:'Hearts', emojis:['❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','💟','☮️','✝️','☪️','🕉️','✡️','🔯','🕎','☯️','☦️','🛐'] },
+  { icon:'❤️', label:'Hearts', emojis:['❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','💟'] },
   { icon:'👋', label:'People', emojis:['👋','🤚','🖐️','✋','🖖','👌','🤌','🤏','✌️','🤞','🤟','🤘','🤙','👈','👉','👆','🖕','👇','☝️','👍','👎','✊','👊','🤛','🤜','👏','🙌','👐','🤲','🤝','🙏','✍️','💅','🤳','💪','🦾','🦵','🦿','🦶','👂','🦻','👃','🧠','🦷','🦴','👀','👁️','👅','👄','💋','🩸'] },
-  { icon:'🐱', label:'Animals', emojis:['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐻‍❄️','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🙈','🙉','🙊','🐔','🐧','🐦','🐤','🦆','🦅','🦉','🦇','🐺','🐗','🐴','🦄','🐝','🪱','🐛','🦋','🐌','🐞','🐜','🦟','🦗','🕷️','🦂','🐢','🐍','🦎','🐙','🦑','🦐','🦀','🐡','🐠','🐟','🐬','🐳','🐋','🦈'] },
-  { icon:'🍎', label:'Food', emojis:['🍏','🍎','🍐','🍊','🍋','🍌','🍉','🍇','🍓','🫐','🍒','🍑','🥭','🍍','🥥','🥝','🍅','🍆','🥑','🥦','🌶️','🧄','🧅','🥔','🍠','🥐','🥯','🍞','🥖','🧀','🥚','🍳','🧈','🥞','🧇','🥓','🥩','🍗','🍖','🌭','🍔','🍟','🍕','🌮','🌯','🥗','🥘','🍝','🍜','🍲','🍛','🍣','🍱','🥟','🍤','🍙','🍚','🍘','🍥','🥮','🧁','🍰','🎂','🍮','🍭','🍬','🍫','🍿','🍩','🍪','🌰','🥜','🍯','🧃','🥤','🧋','☕','🍵','🍺','🍻','🥂','🍷','🥃','🍸','🍹','🍾'] },
+  { icon:'🐱', label:'Animals', emojis:['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🙈','🙉','🙊','🐔','🐧','🐦','🐤','🦆','🦅','🦉','🦇','🐺','🐗','🐴','🦄','🐝','🦋','🐌','🐞','🐜','🦟','🕷️','🦂','🐢','🐍','🦎','🐙','🦑','🦐','🦀','🐡','🐠','🐟','🐬','🐳','🦈'] },
+  { icon:'🍎', label:'Food', emojis:['🍏','🍎','🍐','🍊','🍋','🍌','🍉','🍇','🍓','🫐','🍒','🍑','🥭','🍍','🥥','🥝','🍅','🍆','🥑','🥦','🌶️','🧄','🥔','🍠','🥐','🥯','🍞','🥖','🧀','🥚','🍳','🧈','🥞','🧇','🥓','🥩','🍗','🍖','🌭','🍔','🍟','🍕','🌮','🌯','🥗','🥘','🍝','🍜','🍲','🍛','🍣','🍱','🥟','🍤','🍙','🍚','🍘','🍥','🥮','🧁','🍰','🎂','🍮','🍭','🍬','🍫','🍿','🍩','🍪','🌰','🥜','🍯','🧃','🥤','🧋','☕','🍵','🍺','🍻','🥂','🍷','🥃','🍸','🍹','🍾'] },
   { icon:'⚽', label:'Activity', emojis:['⚽','🏀','🏈','⚾','🥎','🏐','🏉','🎾','🥏','🎱','🏓','🏸','🏒','🥅','⛳','🎯','🎮','🕹️','🎲','🧩','🧸','♟️','🎭','🎨','🎰','🚗','🏎️','🏍️','🛵','🚲','🛴','🛹','🎿','🛷','🥌'] },
   { icon:'🌍', label:'Travel', emojis:['🌍','🌎','🌏','🌐','🗺️','🧭','🏔️','⛰️','🌋','🏕️','🏖️','🏜️','🏝️','🏟️','🏛️','🏗️','🏘️','🏠','🏡','🏢','🏣','🏤','🏥','🏦','🏨','🏪','🏫','🏬','🏭','🏯','🏰','💒','🗼','🗽','⛪','🕌','⛩️','🕋','⛲','⛺','🌁','🌃','🏙️','🌄','🌅','🌆','🌇','🌉','🎠','🎡','🎢','🎪','🚂','🚃','🚄','🚅','🚇','🚌','🚍','🚎','🚑','🚒','🚓','🚕','✈️','🛫','🛬','💺','🚀','🛸','🚁','🛶','⛵','🚤','🛥️','🛳️','🚢'] },
   { icon:'💡', label:'Objects', emojis:['⌚','📱','💻','⌨️','🖥️','🖨️','🖱️','💽','💾','💿','📀','📷','📸','📹','🎥','📞','☎️','📺','📻','🧭','⏱️','⏰','📡','🔋','🔌','💡','🔦','🕯️','💰','💴','💵','💶','💷','💸','💳','🪙','✉️','📧','📝','📁','📂','📅','📆','📈','📉','📊','📋','📌','📍','✂️','🔒','🔓','🔑','🗝️','🔨','⚒️','🛠️','⚙️','🔗','⛓️','🧰','🧲','💊','🩺','🩻','🧪','🧬','🔬','🔭','📡'] },
@@ -577,6 +742,12 @@ function buildEmojiPicker() {
   var panel = document.createElement('div');
   panel.id = 'emojiPickerPanel';
   panel.className = 'emoji-picker-wrap';
+
+  // Swipe hint bar
+  var hint = document.createElement('div');
+  hint.className = 'emoji-swipe-hint';
+  panel.appendChild(hint);
+
   var tabs = document.createElement('div');
   tabs.className = 'emoji-cat-tabs';
   var body = document.createElement('div');
@@ -610,7 +781,36 @@ function buildEmojiPicker() {
   panel.appendChild(body);
   var chatBar = document.querySelector('.chat-bar');
   if (chatBar) chatBar.appendChild(panel);
+
+  // Swipe left/right on emoji panel to change category
+  initEmojiSwipe(panel, tabs);
   return panel;
+}
+
+function initEmojiSwipe(panel, tabsEl) {
+  var startX = 0, startY = 0, swiping = false;
+  panel.addEventListener('touchstart', function(e) {
+    // Only on body (not tabs)
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    swiping = false;
+  }, { passive: true });
+  panel.addEventListener('touchmove', function(e) {
+    var dx = e.touches[0].clientX - startX;
+    var dy = Math.abs(e.touches[0].clientY - startY);
+    if (!swiping && Math.abs(dx) > dy && Math.abs(dx) > 14) swiping = true;
+  }, { passive: true });
+  panel.addEventListener('touchend', function(e) {
+    if (!swiping) return;
+    var dx = e.changedTouches[0].clientX - startX;
+    if (Math.abs(dx) < 50) return;
+    var activeCat = document.querySelector('.emoji-cat-tab.active');
+    var allCats = Array.from(document.querySelectorAll('.emoji-cat-tab'));
+    var idx = allCats.indexOf(activeCat);
+    var next = dx < 0 ? Math.min(idx+1, allCats.length-1) : Math.max(idx-1, 0);
+    if (next !== idx) allCats[next].click();
+    swiping = false;
+  });
 }
 
 function insertEmoji(em) {
@@ -623,7 +823,6 @@ function insertEmoji(em) {
   input.setSelectionRange(pos, pos);
   input.focus();
 }
-
 function toggleEmojiPicker(e) {
   e.stopPropagation();
   var panel = document.getElementById('emojiPickerPanel') || buildEmojiPicker();
@@ -631,7 +830,6 @@ function toggleEmojiPicker(e) {
   panel.style.display = emojiPickerOpen ? 'flex' : 'none';
   document.getElementById('emojiTrigger').classList.toggle('active', emojiPickerOpen);
 }
-
 function closeEmojiPicker() {
   emojiPickerOpen = false;
   var panel = document.getElementById('emojiPickerPanel');
@@ -651,7 +849,6 @@ function setReply(id, senderName, message) {
   document.getElementById('replyBannerText').textContent = preview;
   document.getElementById('chatInput').focus();
 }
-
 function clearReplyBanner() {
   replyTarget = null;
   var banner = document.getElementById('replyBanner');
@@ -664,7 +861,6 @@ function closeMsgActionMenu() {
   if (activeMsgActionMenu && activeMsgActionMenu.parentNode) activeMsgActionMenu.remove();
   activeMsgActionMenu = null;
 }
-
 function showMsgActionMenu(msgId, senderName, message, anchorEl) {
   closeMsgActionMenu();
   var isAdmin = currentAccount && currentAccount.role === 'admin';
@@ -675,38 +871,27 @@ function showMsgActionMenu(msgId, senderName, message, anchorEl) {
   var replyBtn = document.createElement('button');
   replyBtn.className = 'msg-action-item';
   replyBtn.innerHTML = '↩ Balas';
-  replyBtn.onclick = function(e) {
-    e.stopPropagation();
-    closeMsgActionMenu();
-    setReply(msgId, senderName, message);
-  };
+  replyBtn.onclick = function(e) { e.stopPropagation(); closeMsgActionMenu(); setReply(msgId, senderName, message); };
   menu.appendChild(replyBtn);
   if (canDelete) {
     var delBtn = document.createElement('button');
     delBtn.className = 'msg-action-item danger';
     delBtn.innerHTML = '✕ Hapus';
-    delBtn.onclick = function(e) {
-      e.stopPropagation();
-      closeMsgActionMenu();
-      delMsg(msgId);
-    };
+    delBtn.onclick = function(e) { e.stopPropagation(); closeMsgActionMenu(); delMsg(msgId); };
     menu.appendChild(delBtn);
   }
   var rect = anchorEl.getBoundingClientRect();
   var isMe = currentAccount && senderName === currentAccount.name;
   menu.style.position = 'fixed';
   menu.style.top = (rect.bottom + 4) + 'px';
-  if (isMe) {
-    menu.style.right = (window.innerWidth - rect.right) + 'px';
-  } else {
-    menu.style.left = rect.left + 'px';
-  }
+  if (isMe) menu.style.right = (window.innerWidth - rect.right) + 'px';
+  else menu.style.left = rect.left + 'px';
   document.body.appendChild(menu);
   activeMsgActionMenu = menu;
 }
-
 async function delMsg(id) {
-  if (!confirm('Hapus pesan ini?')) return;
+  var ok = await showConfirm('Hapus pesan ini?', { icon:'🗑', title:'Hapus Pesan', okText:'Hapus', cancelText:'Batal' });
+  if (!ok) return;
   var res = await sb.from('chat_messages').delete().eq('id', id);
   if (res.error) { toast('Gagal hapus', false); return; }
   var el = document.querySelector('[data-msg-id="'+id+'"]');
@@ -714,7 +899,7 @@ async function delMsg(id) {
   toast('Pesan dihapus');
 }
 
-// ========== CHAT UPLOAD (via chat bar - no confirm modal) ==========
+// ========== CHAT UPLOAD ==========
 async function doChatUpload(input) {
   if (!currentAccount) return;
   var file = input.files[0];
@@ -734,9 +919,7 @@ async function doChatUpload(input) {
       xhr.onerror = function(){reject(new Error('Network error'));};
       xhr.send(file);
     });
-  } catch(err) {
-    toast('Upload gagal', false); input.value=''; return;
-  }
+  } catch(err) { toast('Upload gagal', false); input.value=''; return; }
   var pub = sb.storage.from('gallery').getPublicUrl(name);
   var mediaUrl = pub.data.publicUrl;
   var msgContent = isVid ? '[video]'+mediaUrl : '[img]'+mediaUrl;
@@ -748,69 +931,49 @@ async function doChatUpload(input) {
   input.value='';
 }
 
-// ========== GALLERY UPLOAD CONFIRM MODAL ==========
+// ========== GALLERY UPLOAD CONFIRM ==========
 function triggerUploadConfirm(input) {
   if (!currentAccount || currentAccount.role !== 'admin') {
     toast('Hanya admin yang bisa upload', false);
-    input.value = '';
-    return;
+    input.value = ''; return;
   }
   var file = input.files[0];
   if (!file) return;
   pendingUploadFile = file;
-
   document.getElementById('uploadFileName').textContent = file.name;
   document.getElementById('uploadFileSize').textContent = fmtBytes(file.size) + ' · ' + (file.type || 'unknown');
-
   document.getElementById('uploadProgressWrap').style.display = 'none';
   document.getElementById('uploadProgressFill').style.width = '0%';
   document.getElementById('uploadPctLabel').textContent = '0%';
   document.getElementById('uploadSpeedLabel').textContent = '—';
   document.getElementById('uploadRemainLabel').textContent = '—';
-
   var goBtn = document.getElementById('uploadGoBtn');
   var cancelBtn = document.getElementById('uploadCancelBtn');
   var closeBtn = document.getElementById('uploadModalCloseBtn');
-  goBtn.disabled = false;
-  goBtn.textContent = 'Upload';
-  cancelBtn.textContent = 'Batal';
-  closeBtn.style.display = '';
-
+  goBtn.disabled = false; goBtn.textContent = 'Upload';
+  cancelBtn.textContent = 'Batal'; closeBtn.style.display = '';
   document.getElementById('uploadConfirmModal').classList.add('show');
   input.value = '';
 }
-
 function cancelUploadModal() {
-  if (uploadXHR) {
-    try { uploadXHR.abort(); } catch(e){}
-    uploadXHR = null;
-  }
+  if (uploadXHR) { try { uploadXHR.abort(); } catch(e){} uploadXHR = null; }
   pendingUploadFile = null;
   document.getElementById('uploadConfirmModal').classList.remove('show');
 }
-
 async function startGalleryUpload() {
   if (!pendingUploadFile) return;
   var file = pendingUploadFile;
-
   var goBtn = document.getElementById('uploadGoBtn');
   var cancelBtn = document.getElementById('uploadCancelBtn');
   var closeBtn = document.getElementById('uploadModalCloseBtn');
-
-  goBtn.disabled = true;
-  goBtn.textContent = 'Mengupload...';
-  closeBtn.style.display = 'none';
-  cancelBtn.textContent = 'Batalkan';
-
+  goBtn.disabled = true; goBtn.textContent = 'Mengupload...';
+  closeBtn.style.display = 'none'; cancelBtn.textContent = 'Batalkan';
   document.getElementById('uploadProgressWrap').style.display = 'flex';
-
   var ext = file.name.split('.').pop();
   var name = Date.now() + '_' + Math.random().toString(36).slice(2,6) + '.' + ext;
   var uploadUrl = SB_URL + '/storage/v1/object/gallery/' + name;
-
   var lastLoaded = 0, lastTime = Date.now();
   var success = false;
-
   try {
     await new Promise(function(resolve, reject) {
       var xhr = new XMLHttpRequest();
@@ -819,7 +982,6 @@ async function startGalleryUpload() {
       xhr.setRequestHeader('Authorization', 'Bearer ' + SB_KEY);
       xhr.setRequestHeader('x-upsert', 'false');
       xhr.setRequestHeader('Cache-Control', '3600');
-
       xhr.upload.onprogress = function(e) {
         if (!e.lengthComputable) return;
         var now = Date.now();
@@ -827,54 +989,32 @@ async function startGalleryUpload() {
         var elapsed = (now - lastTime) / 1000;
         var speed = elapsed > 0 ? (e.loaded - lastLoaded) / elapsed : 0;
         lastLoaded = e.loaded; lastTime = now;
-
         document.getElementById('uploadProgressFill').style.width = percent + '%';
         document.getElementById('uploadPctLabel').textContent = percent + '%';
         document.getElementById('uploadSpeedLabel').textContent = speed > 0 ? fmtBytes(speed) + '/s' : '—';
         document.getElementById('uploadRemainLabel').textContent = fmtBytes(e.total - e.loaded) + ' tersisa';
       };
-
-      xhr.onload = function() {
-        uploadXHR = null;
-        if (xhr.status >= 200 && xhr.status < 300) resolve();
-        else reject(new Error('HTTP ' + xhr.status));
-      };
+      xhr.onload = function() { uploadXHR = null; if (xhr.status >= 200 && xhr.status < 300) resolve(); else reject(new Error('HTTP ' + xhr.status)); };
       xhr.onerror = function() { uploadXHR = null; reject(new Error('Network error')); };
       xhr.onabort = function() { uploadXHR = null; reject(new Error('Dibatalkan')); };
       xhr.send(file);
     });
     success = true;
   } catch(err) {
-    if (err.message === 'Dibatalkan') {
-      toast('Upload dibatalkan', false);
-    } else {
-      toast('Upload gagal: ' + err.message, false);
-    }
-    goBtn.disabled = false;
-    goBtn.textContent = 'Upload';
-    cancelBtn.textContent = 'Batal';
-    closeBtn.style.display = '';
+    if (err.message === 'Dibatalkan') toast('Upload dibatalkan', false);
+    else toast('Upload gagal: ' + err.message, false);
+    goBtn.disabled = false; goBtn.textContent = 'Upload';
+    cancelBtn.textContent = 'Batal'; closeBtn.style.display = '';
     document.getElementById('uploadProgressWrap').style.display = 'none';
     document.getElementById('uploadConfirmModal').classList.remove('show');
-    pendingUploadFile = null;
-    return;
+    pendingUploadFile = null; return;
   }
-
   if (!success) return;
-
   var pub = sb.storage.from('gallery').getPublicUrl(name);
   var dbRes = await sb.from('gallery').insert([{file_url: pub.data.publicUrl, file_name: name}]);
-
-  if (dbRes.error) {
-    toast('Gagal simpan: ' + dbRes.error.message, false);
-  } else {
-    toast('Berhasil diupload ✓');
-    galleryLoaded = false;
-    loadGallery();
-  }
-
-  pendingUploadFile = null;
-  uploadXHR = null;
+  if (dbRes.error) toast('Gagal simpan: ' + dbRes.error.message, false);
+  else { toast('Berhasil diupload ✓'); galleryLoaded = false; loadGallery(); }
+  pendingUploadFile = null; uploadXHR = null;
   document.getElementById('uploadConfirmModal').classList.remove('show');
 }
 
@@ -897,19 +1037,16 @@ function buildMsgEl(m) {
   var isVidMsg = msgContent.startsWith('[video]');
   var mediaUrl = (isImgMsg || isVidMsg) ? msgContent.slice(isImgMsg?5:7) : null;
 
-  // Action button (inside bubble, center-vertical)
   var actionBtn = document.createElement('button');
   actionBtn.className = 'bubble-action-btn';
   actionBtn.title = 'Opsi';
   actionBtn.textContent = '⋮';
   actionBtn.addEventListener('click', function(e) {
     e.stopPropagation();
-    // Jangan tampilkan menu saat selection mode
     if (selectionModeActive) return;
     showMsgActionMenu(m.id, m.sender_name, m.message || '', actionBtn);
   });
 
-  // Reply preview
   var replyEl = null;
   if (m.reply_to_name && m.reply_to_text) {
     var rColor = m.reply_to_name === "Jef'z" ? '#3d5afe' : '#e91e8c';
@@ -923,100 +1060,64 @@ function buildMsgEl(m) {
       '<span class="reply-prev-text">'+esc(rPreview)+'</span>';
   }
 
-  // Build bubble
   var bubble = document.createElement('div');
-  if (mediaUrl) {
-    bubble.className = 'bubble bubble-media';
-  } else {
-    bubble.className = 'bubble';
-  }
-
-  // Action button (absolutely positioned, vertical center)
+  bubble.className = mediaUrl ? 'bubble bubble-media' : 'bubble';
   bubble.appendChild(actionBtn);
-
-  // Reply preview
   if (replyEl) bubble.appendChild(replyEl);
 
-  // Content
   if (isImgMsg && mediaUrl) {
     var img = document.createElement('img');
-    img.src = mediaUrl;
-    img.className = 'bubble-img';
-    img.loading = 'lazy';
-    img.onclick = function(e) { e.stopPropagation(); openLightbox(mediaUrl); };
+    img.src = mediaUrl; img.className = 'bubble-img'; img.loading = 'lazy';
+    img.onclick = function(e) { e.stopPropagation(); openLightboxFromChat(mediaUrl); };
     bubble.appendChild(img);
   } else if (isVidMsg && mediaUrl) {
     var vid = document.createElement('video');
-    vid.src = mediaUrl;
-    vid.className = 'bubble-vid';
-    vid.preload = 'metadata';
-    vid.controls = true;
-    vid.playsInline = true;
+    vid.src = mediaUrl; vid.className = 'bubble-vid'; vid.preload = 'metadata';
+    vid.controls = true; vid.playsInline = true;
     bubble.appendChild(vid);
   } else {
-    // PENTING: gunakan textContent untuk preserve newline.
-    // CSS `white-space: pre-wrap` di .bubble akan merender \n dengan benar.
     var textNode = document.createTextNode(msgContent);
     bubble.appendChild(textNode);
   }
 
-  // Time
   var btime = document.createElement('span');
-  btime.className = 'btime';
-  btime.textContent = fmtTime(m.created_at);
+  btime.className = 'btime'; btime.textContent = fmtTime(m.created_at);
   bubble.appendChild(btime);
 
-  // Sender label (theirs only)
   var blockInner = document.createElement('div');
   blockInner.className = 'msg-block-inner';
   if (!isMe) {
     var senderSpan = document.createElement('span');
-    senderSpan.className = 'msg-sender';
-    senderSpan.style.color = nameColor;
+    senderSpan.className = 'msg-sender'; senderSpan.style.color = nameColor;
     senderSpan.textContent = m.sender_name + roleTag;
     blockInner.appendChild(senderSpan);
   }
   blockInner.appendChild(bubble);
 
   var msgBlock = document.createElement('div');
-  msgBlock.className = 'msg-block';
-  msgBlock.appendChild(blockInner);
+  msgBlock.className = 'msg-block'; msgBlock.appendChild(blockInner);
 
   var swipeWrap = document.createElement('div');
-  swipeWrap.className = 'msg-swipe-wrap';
-  swipeWrap.appendChild(msgBlock);
-
+  swipeWrap.className = 'msg-swipe-wrap'; swipeWrap.appendChild(msgBlock);
   d.appendChild(swipeWrap);
 
-  // Touch interactions
   initLongPressSelect(d, m, canDelete);
   initSwipeReply(d, m);
-
   return d;
 }
 
-// ========== LONG-PRESS → ENTER SELECTION MODE ==========
+// ========== LONG-PRESS CHAT ==========
 function initLongPressSelect(rowEl, m, canDelete) {
   var bubble = rowEl.querySelector('.bubble');
   if (!bubble) return;
-  var pressTimer = null;
-  var moved = false;
+  var pressTimer = null, moved = false;
   var touchStartX = 0, touchStartY = 0;
 
   bubble.addEventListener('touchstart', function(e) {
-    // Abaikan klik di action button
     if (e.target.closest('.bubble-action-btn')) return;
-
-    // Jika selection mode sudah aktif → klik biasa = toggle
-    if (selectionModeActive) {
-      // Tidak handle di sini — akan di-handle di touchend
-      return;
-    }
-
+    if (selectionModeActive) return;
     moved = false;
-    touchStartX = e.touches[0].clientX;
-    touchStartY = e.touches[0].clientY;
-
+    touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY;
     pressTimer = setTimeout(function() {
       if (!moved && m.id) {
         if (navigator.vibrate) navigator.vibrate(40);
@@ -1024,32 +1125,17 @@ function initLongPressSelect(rowEl, m, canDelete) {
       }
     }, 500);
   }, { passive: true });
-
   bubble.addEventListener('touchmove', function(e) {
     var dx = Math.abs(e.touches[0].clientX - touchStartX);
     var dy = Math.abs(e.touches[0].clientY - touchStartY);
-    if (dx > 8 || dy > 8) {
-      moved = true;
-      clearTimeout(pressTimer);
-    }
+    if (dx > 8 || dy > 8) { moved = true; clearTimeout(pressTimer); }
   }, { passive: true });
-
   bubble.addEventListener('touchend', function(e) {
     clearTimeout(pressTimer);
-
-    // Jika selection mode aktif & tidak bergerak → toggle select
-    if (selectionModeActive && !moved && m.id) {
-      // Cegah event lain (mis. swipe)
-      e.stopPropagation();
-      toggleMsgSelection(String(m.id));
-    }
+    if (selectionModeActive && !moved && m.id) { e.stopPropagation(); toggleMsgSelection(String(m.id)); }
     moved = false;
   });
-
-  bubble.addEventListener('touchcancel', function() {
-    clearTimeout(pressTimer);
-    moved = false;
-  });
+  bubble.addEventListener('touchcancel', function() { clearTimeout(pressTimer); moved = false; });
 }
 
 // ========== SWIPE TO REPLY ==========
@@ -1058,21 +1144,16 @@ function initSwipeReply(rowEl, m) {
   var startX = 0, startY = 0, dx = 0, swiping = false, triggered = false;
 
   swipeWrap.addEventListener('touchstart', function(e) {
-    var t = e.touches[0];
-    startX = t.clientX; startY = t.clientY;
+    var t = e.touches[0]; startX = t.clientX; startY = t.clientY;
     dx = 0; swiping = false; triggered = false;
   }, { passive: true });
-
   swipeWrap.addEventListener('touchmove', function(e) {
-    // Disable swipe saat selection mode
     if (selectionModeActive) return;
-    var t = e.touches[0];
-    dx = t.clientX - startX;
+    var t = e.touches[0]; dx = t.clientX - startX;
     var dy = Math.abs(t.clientY - startY);
-    if (!swiping && Math.abs(dx) > dy && Math.abs(dx) > 8) { swiping = true; }
+    if (!swiping && Math.abs(dx) > dy && Math.abs(dx) > 8) swiping = true;
     if (!swiping) return;
-    var swipeDist = Math.max(0, dx);
-    var clamped = Math.min(swipeDist, 72);
+    var clamped = Math.min(Math.max(0, dx), 72);
     swipeWrap.style.transform = 'translateX('+clamped+'px)';
     swipeWrap.style.transition = 'none';
     if (clamped >= 60 && !triggered) {
@@ -1082,11 +1163,8 @@ function initSwipeReply(rowEl, m) {
     }
     if (e.cancelable) e.preventDefault();
   }, { passive: false });
-
   swipeWrap.addEventListener('touchend', function() {
-    if (!selectionModeActive && triggered && dx >= 60) {
-      setReply(m.id, m.sender_name, m.message || '');
-    }
+    if (!selectionModeActive && triggered && dx >= 60) setReply(m.id, m.sender_name, m.message || '');
     swipeWrap.style.transition = 'transform 0.25s cubic-bezier(0.34,1.56,0.64,1)';
     swipeWrap.style.transform = 'translateX(0)';
     swiping = false; triggered = false;
@@ -1099,13 +1177,11 @@ function appendMsg(m, smooth) {
   var id = String(m.id || '');
   if (id && seenMsgIds.has(id)) return;
   if (id) seenMsgIds.add(id);
-  var ph = el.querySelector('.state-msg');
-  if (ph) el.innerHTML = '';
+  var ph = el.querySelector('.state-msg'); if (ph) el.innerHTML = '';
   el.appendChild(buildMsgEl(m));
   var dist = el.scrollHeight - el.scrollTop - el.clientHeight;
   scrollBottom(el, smooth && dist < 300);
 }
-
 async function initChat() {
   isChatActive = true; chatLoaded = false; seenMsgIds.clear();
   var el = document.getElementById('chatList');
@@ -1122,7 +1198,6 @@ async function initChat() {
   }
   startChatSync();
 }
-
 function startChatSync() {
   if (chatChannel){try{sb.removeChannel(chatChannel);}catch(e){}chatChannel=null;}
   if (pollTimer){clearInterval(pollTimer);pollTimer=null;}
@@ -1134,12 +1209,7 @@ function startChatSync() {
       if (currentAccount && payload.new.sender_name === currentAccount.name) {
         var el = document.getElementById('chatList');
         var pend = el ? el.querySelector('[data-pending]') : null;
-        if (pend) {
-          pend.dataset.msgId = newId;
-          seenMsgIds.add(newId);
-          pend.removeAttribute('data-pending');
-          return;
-        }
+        if (pend) { pend.dataset.msgId = newId; seenMsgIds.add(newId); pend.removeAttribute('data-pending'); return; }
       }
       appendMsg(payload.new, true);
     })
@@ -1155,96 +1225,74 @@ function startChatSync() {
     if (!isChatActive||!chatLoaded) return;
     var res=await sb.from('chat_messages').select('*').order('created_at',{ascending:false}).limit(20);
     if (res.error||!res.data) return;
-    res.data.slice().reverse().forEach(function(m){
-      if (m.id && !seenMsgIds.has(String(m.id))) appendMsg(m, false);
-    });
+    res.data.slice().reverse().forEach(function(m){ if (m.id && !seenMsgIds.has(String(m.id))) appendMsg(m, false); });
   }, 4000);
 }
 
 var isSending = false;
-
 async function sendMsg() {
   if (isSending) return;
   var input = document.getElementById('chatInput');
-  // PENTING: ambil value SEBELUM trim untuk menjaga newline.
-  // Hanya trim whitespace di awal & akhir, bukan di tengah.
   var rawMsg = input.value;
-  var msg = rawMsg.replace(/^[\s\uFEFF\xA0]+|[\s\uFEFF\xA0]+$/g, ''); // trim awal & akhir saja
+  var msg = rawMsg.replace(/^[\s\uFEFF\xA0]+|[\s\uFEFF\xA0]+$/g, '');
   if (!msg || !currentAccount) return;
   isSending = true;
-  input.value = '';
-  input.style.height = '';
-  input.focus();
-
-  var insertData = {
-    message: msg, user_id: uid,
-    sender_name: currentAccount.name, sender_role: currentAccount.role
-  };
+  input.value = ''; input.style.height = ''; input.focus();
+  var insertData = { message: msg, user_id: uid, sender_name: currentAccount.name, sender_role: currentAccount.role };
   if (replyTarget) {
     insertData.reply_to_id = replyTarget.id;
     insertData.reply_to_name = replyTarget.sender_name;
     insertData.reply_to_text = replyTarget.message;
   }
-
-  var fakeMsg = {
-    message: msg, sender_name: currentAccount.name, sender_role: currentAccount.role,
-    user_id: uid, created_at: new Date().toISOString(),
-    reply_to_name: insertData.reply_to_name, reply_to_text: insertData.reply_to_text
-  };
+  var fakeMsg = { message: msg, sender_name: currentAccount.name, sender_role: currentAccount.role, user_id: uid, created_at: new Date().toISOString(), reply_to_name: insertData.reply_to_name, reply_to_text: insertData.reply_to_text };
   clearReplyBanner();
-
   var el = document.getElementById('chatList');
   var ph = el.querySelector('.state-msg'); if (ph) el.innerHTML = '';
   var msgEl = buildMsgEl(fakeMsg); msgEl.dataset.pending = '1';
   el.appendChild(msgEl); scrollBottom(el, true);
-
   var res = await sb.from('chat_messages').insert([insertData]);
   isSending = false;
-  if (res.error){
-    var pend = el.querySelector('[data-pending]'); if (pend) pend.remove();
-    toast('Gagal kirim', false); input.value = msg; return;
-  }
+  if (res.error){ var pend = el.querySelector('[data-pending]'); if (pend) pend.remove(); toast('Gagal kirim', false); input.value = msg; return; }
   setTimeout(async function(){
     var pend = el.querySelector('[data-pending]'); if (!pend) return;
     var r = await sb.from('chat_messages').select('id').order('created_at',{ascending:false}).limit(1);
-    if (r.data&&r.data[0]){
-      var newId = String(r.data[0].id);
-      if (!seenMsgIds.has(newId)) seenMsgIds.add(newId);
-      pend.dataset.msgId = newId;
-      pend.removeAttribute('data-pending');
-    }
+    if (r.data&&r.data[0]){ var newId = String(r.data[0].id); if (!seenMsgIds.has(newId)) seenMsgIds.add(newId); pend.dataset.msgId = newId; pend.removeAttribute('data-pending'); }
   }, 800);
 }
 
 // ========== GALLERY ==========
+// Gallery items for lightbox navigation
+var galleryItems = []; // [{url, isVid}]
+
 async function loadGallery() {
   var el=document.getElementById('galleryGrid');
   el.innerHTML='<p class="state-msg">Memuat...</p>';
   var res=await sb.from('gallery').select('*').order('created_at',{ascending:false});
   if (res.error){el.innerHTML='<p class="state-msg err">Error: '+res.error.message+'</p>';return;}
   galleryLoaded=true;
+  galleryItems = [];
   if (!res.data||!res.data.length){el.innerHTML='<p class="state-msg">Belum ada media.</p>';return;}
   el.innerHTML='';
   var isAdmin=currentAccount&&currentAccount.role==='admin';
   var frag=document.createDocumentFragment();
-  res.data.forEach(function(f){
+  res.data.forEach(function(f, idx){
     var isVid=/\.(mp4|webm|mov|avi)$/i.test(f.file_name||'');
+    galleryItems.push({ url: f.file_url, isVid: isVid });
     var d=document.createElement('div'); d.className='g-item';
     if (isVid){
       var thumb=document.createElement('div'); thumb.className='g-video-thumb';
       thumb.style.cssText='position:relative;width:100%;height:100%;';
-      var vid=document.createElement('video');
-      vid.className='g-media g-video-preview';
-      vid.preload='metadata'; vid.muted=true; vid.playsInline=true;
-      vid.src=f.file_url+'#t=0.001';
+      var vid=document.createElement('video'); vid.className='g-media g-video-preview';
+      vid.preload='metadata'; vid.muted=true; vid.playsInline=true; vid.src=f.file_url+'#t=0.001';
       var playIcon=document.createElement('div'); playIcon.className='g-play-icon';
       playIcon.innerHTML='<svg viewBox="0 0 24 24" fill="white" width="28" height="28"><circle cx="12" cy="12" r="12" fill="rgba(0,0,0,0.5)"/><polygon points="10,8 18,12 10,16" fill="white"/></svg>';
       thumb.appendChild(vid); thumb.appendChild(playIcon);
-      thumb.onclick=function(){openVideoLightbox(f.file_url);};
+      (function(i){ thumb.onclick=function(){openLightbox(i);}; })(idx);
       d.appendChild(thumb);
     } else {
       var img=document.createElement('img'); img.src=f.file_url; img.className='g-media';
-      img.loading='lazy'; img.decoding='async'; img.onclick=function(){openLightbox(f.file_url);};
+      img.loading='lazy'; img.decoding='async';
+      (function(i){ img.onclick=function(){openLightbox(i);}; })(idx);
       d.appendChild(img);
     }
     if (isAdmin){
@@ -1259,49 +1307,164 @@ async function loadGallery() {
 
 async function delMedia(id, name) {
   if (!currentAccount||currentAccount.role!=='admin') return;
-  if (!confirm('Hapus media ini?')) return;
+  var ok = await showConfirm('Hapus media ini?', { icon:'🗑', title:'Hapus Media', okText:'Hapus', cancelText:'Batal' });
+  if (!ok) return;
   await sb.storage.from('gallery').remove([name]);
   var res=await sb.from('gallery').delete().eq('id',id);
   if (res.error){toast('Gagal hapus',false);return;}
   toast('Dihapus'); galleryLoaded=false; loadGallery();
 }
 
-// ========== LIGHTBOX ==========
-function openLightbox(url) {
-  document.getElementById('lightboxImg').src = url;
-  document.getElementById('lightboxImg').style.display = '';
-  var vl = document.getElementById('lightboxVideo');
-  if (vl) { vl.pause(); vl.src=''; vl.remove(); }
-  document.getElementById('lightbox').classList.add('show');
+// ========== LIGHTBOX (IG-Style, swipeable) ==========
+var lbCurrentIdx = -1;
+var lbSwipeStartX = 0, lbSwipeStartY = 0, lbSwiping = false;
+
+function openLightbox(idxOrUrl) {
+  var lb = document.getElementById('lightbox');
+  var wrap = document.getElementById('lightboxMediaWrap');
+
+  if (typeof idxOrUrl === 'number') {
+    lbCurrentIdx = idxOrUrl;
+    _renderLightboxItem(idxOrUrl, wrap);
+  } else {
+    // Legacy: called with URL directly (no index, single image)
+    lbCurrentIdx = -1;
+    _setLightboxImg(idxOrUrl, wrap);
+  }
+  _updateLightboxNav();
+  lb.classList.add('show');
+  initLightboxSwipe(wrap);
+}
+
+function openLightboxFromChat(url) {
+  // Chat images have no index, just show single
+  openLightbox(url);
+}
+
+function _renderLightboxItem(idx, wrap) {
+  if (!wrap) wrap = document.getElementById('lightboxMediaWrap');
+  // Clear existing video
+  var oldVid = wrap.querySelector('video');
+  if (oldVid) { oldVid.pause(); oldVid.src=''; oldVid.remove(); }
+  var img = document.getElementById('lightboxImg');
+
+  if (!galleryItems[idx]) return;
+  var item = galleryItems[idx];
+  if (item.isVid) {
+    img.style.display = 'none';
+    var vid = document.createElement('video');
+    vid.id = 'lightboxVideo';
+    vid.src = item.url; vid.controls = true; vid.playsInline = true;
+    vid.style.cssText = 'max-width:100%;max-height:80vh;width:auto;height:auto;object-fit:contain;display:block;';
+    wrap.appendChild(vid);
+    setTimeout(function(){ vid.play().catch(function(){}); }, 100);
+  } else {
+    img.src = item.url; img.style.display = '';
+  }
+  _updateLightboxCounter(idx);
+}
+
+function _setLightboxImg(url, wrap) {
+  var oldVid = wrap.querySelector('video');
+  if (oldVid) { oldVid.pause(); oldVid.src=''; oldVid.remove(); }
+  var img = document.getElementById('lightboxImg');
+  img.src = url; img.style.display = '';
+  document.getElementById('lightboxCounter').innerHTML = '';
+}
+
+function _updateLightboxNav() {
+  var prev = document.getElementById('lightboxPrev');
+  var next = document.getElementById('lightboxNext');
+  if (lbCurrentIdx < 0 || galleryItems.length <= 1) {
+    if (prev) prev.style.display = 'none';
+    if (next) next.style.display = 'none';
+    return;
+  }
+  if (prev) prev.style.display = lbCurrentIdx > 0 ? '' : 'none';
+  if (next) next.style.display = lbCurrentIdx < galleryItems.length - 1 ? '' : 'none';
+}
+
+function _updateLightboxCounter(idx) {
+  var counter = document.getElementById('lightboxCounter');
+  if (!counter || galleryItems.length <= 1) { if (counter) counter.innerHTML=''; return; }
+  var dots = '';
+  var total = Math.min(galleryItems.length, 12); // max 12 dots
+  var start = Math.max(0, idx - 5);
+  var end = Math.min(galleryItems.length - 1, start + total - 1);
+  for (var i = start; i <= end; i++) {
+    dots += '<span class="lb-dot' + (i === idx ? ' active' : '') + '"></span>';
+  }
+  counter.innerHTML = dots;
+}
+
+function lightboxNav(dir) {
+  if (lbCurrentIdx < 0) return;
+  var next = lbCurrentIdx + dir;
+  if (next < 0 || next >= galleryItems.length) return;
+  lbCurrentIdx = next;
+  var wrap = document.getElementById('lightboxMediaWrap');
+  // Animate slide
+  wrap.style.transition = 'none';
+  wrap.style.transform = 'translateX(' + (dir > 0 ? '40px' : '-40px') + ')';
+  wrap.style.opacity = '0.5';
+  requestAnimationFrame(function(){
+    wrap.style.transition = 'transform 0.28s cubic-bezier(0.34,1.15,0.64,1), opacity 0.22s ease';
+    wrap.style.transform = 'translateX(0)';
+    wrap.style.opacity = '1';
+    _renderLightboxItem(lbCurrentIdx, wrap);
+    _updateLightboxNav();
+  });
+}
+
+function initLightboxSwipe(wrap) {
+  // Remove old listeners by cloning (simpler approach: just track on the lightbox overlay)
+  var lb = document.getElementById('lightbox');
+  lb.ontouchstart = function(e) {
+    var t = e.touches[0];
+    lbSwipeStartX = t.clientX; lbSwipeStartY = t.clientY; lbSwiping = false;
+  };
+  lb.ontouchmove = function(e) {
+    var dx = e.touches[0].clientX - lbSwipeStartX;
+    var dy = Math.abs(e.touches[0].clientY - lbSwipeStartY);
+    if (!lbSwiping && Math.abs(dx) > dy && Math.abs(dx) > 12) lbSwiping = true;
+    if (lbSwiping && wrap) {
+      wrap.style.transition = 'none';
+      wrap.style.transform = 'translateX(' + (dx * 0.45) + 'px)';
+    }
+  };
+  lb.ontouchend = function(e) {
+    if (!lbSwiping) return;
+    var dx = e.changedTouches[0].clientX - lbSwipeStartX;
+    lbSwiping = false;
+    if (wrap) { wrap.style.transition = 'transform 0.2s ease'; wrap.style.transform = 'translateX(0)'; }
+    if (Math.abs(dx) > 60) lightboxNav(dx < 0 ? 1 : -1);
+  };
 }
 
 function closeLightbox() {
-  document.getElementById('lightbox').classList.remove('show');
-  document.getElementById('lightboxImg').src = '';
-  document.getElementById('lightboxImg').style.display = '';
-  var vl = document.getElementById('lightboxVideo');
-  if (vl) { vl.pause(); vl.src=''; vl.remove(); }
-}
-
-function openVideoLightbox(url) {
   var lb = document.getElementById('lightbox');
-  document.getElementById('lightboxImg').style.display = 'none';
-  var vl = document.getElementById('lightboxVideo');
-  if (!vl) {
-    vl = document.createElement('video');
-    vl.id = 'lightboxVideo';
-    vl.controls = true;
-    vl.style.cssText = 'max-width:94vw;max-height:88vh;border-radius:10px;object-fit:contain;';
-    lb.appendChild(vl);
-  }
-  vl.src = url;
-  vl.play();
-  lb.classList.add('show');
+  lb.classList.remove('show');
+  lb.ontouchstart = null; lb.ontouchmove = null; lb.ontouchend = null;
+  var wrap = document.getElementById('lightboxMediaWrap');
+  var oldVid = wrap ? wrap.querySelector('video') : null;
+  if (oldVid) { oldVid.pause(); oldVid.src=''; oldVid.remove(); }
+  var img = document.getElementById('lightboxImg');
+  if (img) { img.src=''; img.style.display=''; }
+  document.getElementById('lightboxCounter').innerHTML = '';
+  lbCurrentIdx = -1;
 }
 
+// Legacy: called from old code
+function openVideoLightbox(url) {
+  openLightbox(url); // will use URL path
+}
+
+// ========== KEY EVENTS ==========
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') {
-    closeLightbox();
-    exitSelectionMode();
+    if (document.getElementById('lightbox').classList.contains('show')) { closeLightbox(); return; }
+    exitSelectionMode(); exitNoteSelectionMode();
   }
+  if (e.key === 'ArrowLeft' && document.getElementById('lightbox').classList.contains('show')) lightboxNav(-1);
+  if (e.key === 'ArrowRight' && document.getElementById('lightbox').classList.contains('show')) lightboxNav(1);
 });
