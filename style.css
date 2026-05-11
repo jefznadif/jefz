@@ -361,22 +361,24 @@ body {
   min-height: 0;
 }
 
-/* ===== EDIT MODAL — layout kaku, scroll HANYA di kolom isi ===== */
+/* ===== EDIT MODAL — tinggi ikut isi, scroll di body saat overflow ===== */
 .modal-edit-box {
-  /* Modal tidak perlu overflow:hidden — kita kendalikan sendiri */
+  /* Tidak stretch — ikut konten, maksimum 92vh */
+  height: auto;
   max-height: 92vh;
 }
 
-/* Body edit modal: tidak overflow, tidak scroll — semua terkunci */
+/* Body edit: scroll jika konten melebihi ruang (misal keyboard aktif) */
 .modal-edit-body {
-  overflow: hidden !important;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
   gap: 12px;
   padding: 16px 20px 20px;
-  /* Tinggi sisa setelah header */
-  flex: 1;
-  min-height: 0;
+  /* Tidak flex:1 — tinggi ikut isi */
+  flex: none;
 }
 
 /* ===== READ MODAL ===== */
@@ -435,32 +437,27 @@ body {
 }
 .edit-title-field::placeholder { color: var(--text3); font-weight: 400; }
 
-/* Kolom isi — scroll di DALAM kolom saja */
+/* Kolom isi — auto-resize mengikuti teks, tidak fixed height */
 .edit-body-wrap {
   background: var(--input-bg);
   border-radius: 12px;
   border: 1.5px solid transparent;
   transition: border-color 0.18s;
-  /* Ambil sisa ruang di modal-body */
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+  /* Tidak flex:1 — ikut tinggi textarea */
+  flex-shrink: 0;
 }
 .edit-body-wrap:focus-within { border-color: var(--accent); }
 
 .edit-body-field {
-  flex: 1;
   width: 100%;
   background: transparent; border: none; outline: none;
   font-family: var(--ff-serif); font-size: 16px; color: var(--text);
   line-height: 1.8;
   resize: none; padding: 14px;
-  /* Scroll terjadi di DALAM kolom ini, bukan di luar */
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
+  /* Auto-resize via JS — tidak ada scroll di sini */
+  overflow: hidden;
+  min-height: 120px;
+  display: block;
 }
 .edit-body-field::placeholder { color: var(--text3); }
 
