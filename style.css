@@ -288,82 +288,80 @@ body { font-family:var(--ff-sys); color:var(--text); min-height:100vh; -webkit-f
 /* ===== BUBBLE ===== */
 .bubble {
   font-size:15px; line-height:1.45; word-break:break-word;
-  /* Padding: top normal, right extra for mine (space for btn left side), left extra for theirs (space for btn right side) */
-  padding:9px 13px;
+  padding: 7px 12px 7px 12px;
   border-radius:18px;
-  display:flex; flex-direction:column; gap:0;
   will-change:transform;
   position: relative;
-  white-space: pre-wrap; /* PENTING: jaga newline dari textarea */
+  white-space: pre-wrap; /* jaga newline dari textarea */
+  /* display block agar .bubble-text & .btime bisa inline-float trick */
+  display: block;
+  overflow: hidden; /* contain float */
 }
 .mine .bubble {
   background:var(--bubble-mine); border:1px solid var(--bubble-bm);
   border-bottom-right-radius:5px; color:var(--text);
-  /* Extra padding kiri untuk tombol action di kiri-center */
-  padding-left: 34px;
+  padding-left: 30px; /* ruang titik tiga kiri */
 }
 .theirs .bubble {
   background:var(--bubble-their); border:1px solid var(--bubble-bt);
   border-bottom-left-radius:5px; color:var(--text);
-  /* Extra padding kanan untuk tombol action di kanan-center */
-  padding-right: 34px;
+  padding-right: 30px; /* ruang titik tiga kanan */
 }
 
 /* Remove old wrap */
 .msg-action-wrap { display: none !important; }
 
-/* ===== BUBBLE ACTION BUTTON — vertical center ===== */
+/* ===== BUBBLE ACTION BUTTON — no background, bigger, vertical center ===== */
 .bubble-action-btn {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   border: none;
-  background: rgba(0,0,0,0.12);
+  background: transparent;
   color: var(--text3);
-  font-size: 13px;
+  font-size: 17px;
+  font-weight: 700;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   line-height: 1;
-  transition: background 0.15s, opacity 0.15s;
+  transition: color 0.15s, opacity 0.15s;
   z-index: 10;
   padding: 0;
   flex-shrink: 0;
   opacity: 0;
+  letter-spacing: -1px;
 }
-body.dark .bubble-action-btn { background: rgba(255,255,255,0.12); }
 
 /* Mine bubble → button di KIRI center */
 .mine .bubble .bubble-action-btn {
-  left: 6px;
+  left: 4px;
 }
 /* Theirs bubble → button di KANAN center */
 .theirs .bubble .bubble-action-btn {
-  right: 6px;
+  right: 4px;
 }
 
 /* Desktop: show on hover */
 @media (hover: hover) {
   .msg-row:hover .bubble .bubble-action-btn { opacity: 1; }
-  .bubble-action-btn:hover { background: rgba(0,0,0,0.22); opacity: 1 !important; }
+  .bubble-action-btn:hover { color: var(--accent); opacity: 1 !important; }
 }
-/* Touch: always show (lower opacity) */
+/* Touch: always show (low opacity) */
 @media (hover: none) {
-  .bubble-action-btn { opacity: 0.55; }
+  .bubble-action-btn { opacity: 0.45; }
 }
 
-/* Media bubble: no extra padding needed */
+/* Media bubble: normal padding, btn still centered */
 .bubble.bubble-media {
-  padding: 9px 13px;
+  padding: 7px 12px;
 }
-.bubble.bubble-media .bubble-action-btn {
-  top: 50%;
-  transform: translateY(-50%);
-}
+.mine .bubble.bubble-media  { padding-left: 30px; }
+.theirs .bubble.bubble-media { padding-right: 30px; }
 
 /* Reply preview inside bubble */
 .reply-preview {
@@ -375,7 +373,36 @@ body.dark .reply-preview { background:rgba(255,255,255,0.08); }
 .reply-prev-name { font-size:11px; font-weight:700; }
 .reply-prev-text { font-size:12px; color:var(--text3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
-.btime { display:block; font-size:10px; color:var(--text3); margin-top:4px; text-align:right; }
+/*
+  ===== TIMESTAMP — WhatsApp style =====
+  Float kanan di bawah teks. Teks isi diberi margin-right minimal
+  agar jam tidak menimpa kata terakhir pada baris terakhir yang pendek.
+  Trick: float:right + margin negatif top supaya naik sedikit dari baseline.
+*/
+.btime {
+  float: right;
+  font-size: 10px;
+  color: var(--text3);
+  margin-left: 6px;
+  margin-bottom: -2px;
+  /* Geser naik sedikit — tidak sejajar teks, tapi juga tidak terlalu jauh */
+  position: relative;
+  top: 3px;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  /* Beri sedikit space di atas agar tidak menempel teks saat single-line */
+  padding-top: 2px;
+}
+
+/* Spacer dummy agar baris terakhir teks tidak tertimpa jam (sama seperti WA) */
+.bubble-time-spacer {
+  display: inline-block;
+  width: 46px; /* lebar kira-kira jam + margin */
+  height: 1px;
+  visibility: hidden;
+  pointer-events: none;
+}
 
 /* Media in bubble */
 .bubble-img { max-width:220px; max-height:220px; border-radius:10px; cursor:pointer; object-fit:cover; display:block; }
