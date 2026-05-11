@@ -27,16 +27,15 @@ let pollTimer = null;
   const bg = document.getElementById('globalBg');
   if (!bg) return;
 
-  // Palet warna orb — vivid supaya kelihatan menembus background
   const ORB_PALETTES = [
-    ['#ff6eb4', '#ff3cac'],   // pink → rose
-    ['#60aaff', '#007aff'],   // sky → blue
-    ['#34d399', '#06b6d4'],   // mint → teal
-    ['#fbbf24', '#f97316'],   // amber → orange
-    ['#c084fc', '#8b5cf6'],   // violet → purple
-    ['#fb7185', '#f43f5e'],   // coral → red
-    ['#86efac', '#22c55e'],   // lime → green
-    ['#67e8f9', '#38bdf8'],   // cyan → sky
+    ['#ff6eb4', '#ff3cac'],
+    ['#60aaff', '#007aff'],
+    ['#34d399', '#06b6d4'],
+    ['#fbbf24', '#f97316'],
+    ['#c084fc', '#8b5cf6'],
+    ['#fb7185', '#f43f5e'],
+    ['#86efac', '#22c55e'],
+    ['#67e8f9', '#38bdf8'],
   ];
 
   const NUM_ORBS = 8;
@@ -48,9 +47,8 @@ let pollTimer = null;
     bg.appendChild(el);
 
     const palette = ORB_PALETTES[i % ORB_PALETTES.length];
-    // Ukuran lebih kecil agar blur tidak membunuh warna
-    const size = 160 + Math.random() * 220;   // 160–380px
-    const blur = size * 0.28;                  // blur ~28% dari ukuran
+    const size = 160 + Math.random() * 220;
+    const blur = size * 0.28;
 
     el.style.width  = size + 'px';
     el.style.height = size + 'px';
@@ -63,8 +61,7 @@ let pollTimer = null;
     el.style.top       = startY + 'vh';
     el.style.transform = 'translate(-50%, -50%)';
 
-    // Opacity lebih tinggi supaya kelihatan
-    const baseOpacity = 0.30 + Math.random() * 0.25;  // 0.30–0.55
+    const baseOpacity = 0.30 + Math.random() * 0.25;
     el.style.opacity = baseOpacity;
 
     orbs.push({
@@ -86,20 +83,18 @@ let pollTimer = null;
   let lastTime = performance.now();
 
   function tick(now) {
-    const dt = Math.min(now - lastTime, 50); // clamp agar tidak lompat
+    const dt = Math.min(now - lastTime, 50);
     lastTime = now;
 
     for (const orb of orbs) {
       orb.x += orb.vx * dt * 0.016;
       orb.y += orb.vy * dt * 0.016;
 
-      // Pantulan lembut
       if (orb.x < -5)  { orb.x = -5;  orb.vx =  Math.abs(orb.vx) * (0.7 + Math.random() * 0.3); }
       if (orb.x > 105) { orb.x = 105; orb.vx = -Math.abs(orb.vx) * (0.7 + Math.random() * 0.3); }
       if (orb.y < -5)  { orb.y = -5;  orb.vy =  Math.abs(orb.vy) * (0.7 + Math.random() * 0.3); }
       if (orb.y > 105) { orb.y = 105; orb.vy = -Math.abs(orb.vy) * (0.7 + Math.random() * 0.3); }
 
-      // Sesekali geser arah
       if (Math.random() < 0.003) {
         orb.vx += (Math.random() - 0.5) * 0.015;
         orb.vy += (Math.random() - 0.5) * 0.015;
@@ -137,25 +132,21 @@ function adjustOpenModals() {
   });
 }
 
-// Dengarkan resize viewport (keyboard naik/turun)
 if (window.visualViewport) {
   window.visualViewport.addEventListener('resize', adjustOpenModals);
 } else {
   window.addEventListener('resize', adjustOpenModals);
 }
 
-// Keyboard muncul butuh waktu ~300ms di iOS — trigger ulang adjust setelah delay
 document.addEventListener('focusin', function(e) {
   var tag = e.target.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA') {
-    // Cek apakah ada modal yang terbuka
     if (document.querySelector('.modal-overlay.show')) {
       setTimeout(adjustOpenModals, 350);
     }
   }
 });
 document.addEventListener('focusout', function() {
-  // Keyboard tutup — kembalikan ukuran modal
   setTimeout(adjustOpenModals, 200);
 });
 
@@ -178,7 +169,6 @@ window.onload = function () {
 // ========== THEME ==========
 function applyTheme() {
   document.body.classList.toggle('dark', dark);
-  // Sync ke #globalBg supaya background warna berubah sesuai tema
   var gbg = document.getElementById('globalBg');
   if (gbg) gbg.classList.toggle('dark', dark);
   var icon = document.getElementById('themeBtnIcon');
@@ -341,7 +331,7 @@ function scrollBottom(el, smooth) {
   });
 }
 
-// Auto-resize textarea sesuai isi konten
+// Auto-resize textarea (hanya untuk judul edit & noteModal body)
 function autoResize(el) {
   el.style.height = 'auto';
   el.style.height = el.scrollHeight + 'px';
@@ -635,21 +625,22 @@ function openEditModal(id) {
     '<span class="edit-author-dot" style="background:' + authorColor + '"></span>' +
     esc(n.author || '');
 
+  // Judul: auto-resize (tidak scroll)
   var titleEl = document.getElementById('editTitleInput');
   titleEl.value = n.title || '';
-  titleEl.oninput = function() { autoResize(this); };
 
+  // Isi: scroll di dalam kolom — tidak perlu autoResize
   var bodyEl = document.getElementById('editBodyInput');
   bodyEl.value = n.content || '';
-  bodyEl.oninput = function() { autoResize(this); };
+  // Reset scroll ke atas
+  bodyEl.scrollTop = 0;
 
   document.getElementById('editNoteId').value = id;
-
   document.getElementById('editModal').classList.add('show');
 
   setTimeout(function() {
+    // Auto-resize hanya untuk judul
     autoResize(titleEl);
-    autoResize(bodyEl);
     adjustOpenModals();
     titleEl.focus();
   }, 80);
@@ -660,9 +651,7 @@ function closeEditModal(e) {
   document.getElementById('editModal').classList.remove('show');
 
   var titleEl = document.getElementById('editTitleInput');
-  var bodyEl = document.getElementById('editBodyInput');
   if (titleEl) titleEl.style.height = '';
-  if (bodyEl) bodyEl.style.height = '';
 }
 
 async function saveEditNote() {
