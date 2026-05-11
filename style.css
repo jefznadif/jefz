@@ -108,7 +108,7 @@ body { font-family:var(--ff-sys); color:var(--text); min-height:100vh; -webkit-f
 .tb-btn { background:transparent; border:none; font-size:15px; color:var(--accent); cursor:pointer; padding:6px 2px; }
 .logout-btn { color:var(--danger); }
 
-/* ===== SELECTION BAR (long-press delete mode) ===== */
+/* ===== SELECTION BAR (multi-select delete mode) ===== */
 .selection-bar {
   display:none;
   position:absolute; inset:0;
@@ -262,11 +262,10 @@ body { font-family:var(--ff-sys); color:var(--text); min-height:100vh; -webkit-f
 .msg-row.reply-flash { animation:flashReply 0.2s ease; }
 @keyframes flashReply { 0%{background:transparent} 50%{background:rgba(0,122,255,0.12)} 100%{background:transparent} }
 
-/* Selected state for long-press */
+/* Selected state for multi-select */
 .msg-row.msg-selected .bubble {
   outline: 2.5px solid var(--danger);
   box-shadow: 0 0 0 4px rgba(255,59,48,0.15);
-  border-radius: 18px;
 }
 
 .msg-swipe-wrap { display:flex; will-change:transform; }
@@ -286,25 +285,38 @@ body { font-family:var(--ff-sys); color:var(--text); min-height:100vh; -webkit-f
 
 .msg-sender { font-size:11px; font-weight:600; margin-bottom:3px; padding:0 5px; }
 
-/* ===== BUBBLE — action button INSIDE bubble ===== */
+/* ===== BUBBLE ===== */
 .bubble {
   font-size:15px; line-height:1.45; word-break:break-word;
-  padding:9px 13px; border-radius:18px;
+  /* Padding: top normal, right extra for mine (space for btn left side), left extra for theirs (space for btn right side) */
+  padding:9px 13px;
+  border-radius:18px;
   display:flex; flex-direction:column; gap:0;
   will-change:transform;
-  position: relative; /* needed for absolute action btn */
+  position: relative;
+  white-space: pre-wrap; /* PENTING: jaga newline dari textarea */
 }
-.mine .bubble { background:var(--bubble-mine); border:1px solid var(--bubble-bm); border-bottom-right-radius:5px; color:var(--text); }
-.theirs .bubble { background:var(--bubble-their); border:1px solid var(--bubble-bt); border-bottom-left-radius:5px; color:var(--text); }
+.mine .bubble {
+  background:var(--bubble-mine); border:1px solid var(--bubble-bm);
+  border-bottom-right-radius:5px; color:var(--text);
+  /* Extra padding kiri untuk tombol action di kiri-center */
+  padding-left: 34px;
+}
+.theirs .bubble {
+  background:var(--bubble-their); border:1px solid var(--bubble-bt);
+  border-bottom-left-radius:5px; color:var(--text);
+  /* Extra padding kanan untuk tombol action di kanan-center */
+  padding-right: 34px;
+}
 
-/* ===== MSG ACTION BUTTON — inside bubble, top corner ===== */
 /* Remove old wrap */
 .msg-action-wrap { display: none !important; }
 
-/* New in-bubble action button */
+/* ===== BUBBLE ACTION BUTTON — vertical center ===== */
 .bubble-action-btn {
   position: absolute;
-  top: 5px;
+  top: 50%;
+  transform: translateY(-50%);
   width: 22px;
   height: 22px;
   border-radius: 50%;
@@ -325,11 +337,11 @@ body { font-family:var(--ff-sys); color:var(--text); min-height:100vh; -webkit-f
 }
 body.dark .bubble-action-btn { background: rgba(255,255,255,0.12); }
 
-/* Mine bubble → button top LEFT */
+/* Mine bubble → button di KIRI center */
 .mine .bubble .bubble-action-btn {
   left: 6px;
 }
-/* Theirs bubble → button top RIGHT */
+/* Theirs bubble → button di KANAN center */
 .theirs .bubble .bubble-action-btn {
   right: 6px;
 }
@@ -344,12 +356,14 @@ body.dark .bubble-action-btn { background: rgba(255,255,255,0.12); }
   .bubble-action-btn { opacity: 0.55; }
 }
 
-/* Padding top for bubble to accommodate the button */
-.bubble { padding-top: 28px; }
-
-/* When media-only bubble (no text besides time), keep compact */
-.bubble.bubble-media { padding-top: 9px; }
-.bubble.bubble-media .bubble-action-btn { top: 5px; }
+/* Media bubble: no extra padding needed */
+.bubble.bubble-media {
+  padding: 9px 13px;
+}
+.bubble.bubble-media .bubble-action-btn {
+  top: 50%;
+  transform: translateY(-50%);
+}
 
 /* Reply preview inside bubble */
 .reply-preview {
@@ -407,7 +421,7 @@ body.dark .reply-preview { background:rgba(255,255,255,0.08); }
 .note-option-item.edit { color:var(--accent); }
 .note-option-item.delete { color:var(--danger); border-top:1px solid var(--separator); }
 
-/* ===== FAB — Notes & Gallery: IDENTICAL position & padding ===== */
+/* ===== FAB — Notes & Gallery ===== */
 .notes-fab-wrap,
 .gallery-fab-wrap {
   position: fixed;
