@@ -30,9 +30,13 @@ let replyTarget = null;
 // Emoji picker state
 let emojiPickerOpen = false;
 
-// ===== FIX: Selection mode for long-press delete =====
+// Selection mode for long-press delete
 let selectedMsgId = null;
 let selectionModeActive = false;
+
+// Upload state
+let pendingUploadFile = null;
+let uploadXHR = null;
 
 // ========== ANIMATED ORB BACKGROUND ==========
 (function initOrbBg() {
@@ -183,26 +187,13 @@ function toast(msg, ok) {
   toastTimer=setTimeout(function(){el.className='toast';},2800);
 }
 
-// ========== UPLOAD PROGRESS TOAST ==========
-function showUploadProgress(percent, speedStr, remainStr) {
-  var el=document.getElementById('toast');
-  clearTimeout(toastTimer);
-  el.className='toast show upload-progress';
-  el.innerHTML=
-    '<div style="display:flex;flex-direction:column;gap:4px;min-width:200px">'+
-      '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px">'+
-        '<span style="font-size:13px">Mengupload...</span>'+
-        '<span style="font-weight:700;font-size:14px">'+percent+'%</span>'+
-      '</div>'+
-      '<div style="background:rgba(255,255,255,0.3);border-radius:6px;height:5px;overflow:hidden">'+
-        '<div style="background:white;height:100%;width:'+percent+'%;transition:width 0.2s;border-radius:6px"></div>'+
-      '</div>'+
-      '<div style="display:flex;justify-content:space-between;font-size:11px;opacity:0.85">'+
-        '<span>'+speedStr+'</span><span>'+remainStr+'</span>'+
-      '</div>'+
-    '</div>';
-}
-function hideUploadProgress() { var el=document.getElementById('toast'); el.className='toast'; el.innerHTML=''; }
+// ========== HELPERS ==========
+function esc(s) { if(!s)return''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function fmtDate(d) { return new Date(d).toLocaleString('id-ID',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}); }
+function fmtTime(d) { return new Date(d).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}); }
+function scrollBottom(el, smooth) { if(!el)return; requestAnimationFrame(function(){el.scrollTo({top:el.scrollHeight,behavior:smooth?'smooth':'instant'});}); }
+function autoResize(el) { el.style.height='auto'; el.style.height=el.scrollHeight+'px'; }
+function fmtBytes(bytes) { if(bytes<1024)return bytes+' B'; if(bytes<1048576)return(bytes/1024).toFixed(1)+' KB'; return(bytes/1048576).toFixed(2)+' MB'; }
 
 // ========== LOGIN ==========
 var pendingAccount = null;
@@ -300,27 +291,16 @@ function activateTab(name) {
   if (name==='Gallery'&&!galleryLoaded) loadGallery();
 }
 
-// ========== HELPERS ==========
-function esc(s) { if(!s)return''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
-function fmtDate(d) { return new Date(d).toLocaleString('id-ID',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}); }
-function fmtTime(d) { return new Date(d).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}); }
-function scrollBottom(el, smooth) { if(!el)return; requestAnimationFrame(function(){el.scrollTo({top:el.scrollHeight,behavior:smooth?'smooth':'instant'});}); }
-function autoResize(el) { el.style.height='auto'; el.style.height=el.scrollHeight+'px'; }
-function fmtBytes(bytes) { if(bytes<1024)return bytes+' B'; if(bytes<1048576)return(bytes/1024).toFixed(1)+' KB'; return(bytes/1048576).toFixed(2)+' MB'; }
-
 // ========== SELECTION MODE (Touch long-press delete) ==========
 function enterSelectionMode(msgId) {
-  // exit if already in selection mode with same id
   if (selectionModeActive && selectedMsgId === msgId) return;
   exitSelectionMode();
   selectionModeActive = true;
   selectedMsgId = msgId;
 
-  // Highlight the selected bubble
   var row = document.querySelector('[data-msg-id="'+msgId+'"]');
   if (row) row.classList.add('msg-selected');
 
-  // Show selection header bar
   var bar = document.getElementById('selectionBar');
   if (!bar) {
     bar = document.createElement('div');
@@ -334,12 +314,10 @@ function enterSelectionMode(msgId) {
   }
   bar.style.display = 'flex';
 
-  // Check if user can delete this message
   var isAdmin = currentAccount && currentAccount.role === 'admin';
-  // Get sender from the row
   var senderEl = row ? row.querySelector('.msg-sender') : null;
   var senderName = senderEl ? senderEl.textContent.replace(' 👑','').trim() : '';
-  var isOwner = currentAccount && (senderName === currentAccount.name || row.classList.contains('mine'));
+  var isOwner = currentAccount && (senderName === currentAccount.name || (row && row.classList.contains('mine')));
   var canDelete = isAdmin || isOwner;
   var delBtn = bar.querySelector('.sel-delete-btn');
   if (delBtn) delBtn.style.display = canDelete ? '' : 'none';
@@ -374,8 +352,7 @@ function closeActiveOptionMenu() {
 document.addEventListener('click', function(e){
   if (!e.target.closest('.note-chevron')&&!e.target.closest('.read-author-option')&&!e.target.closest('.note-options-menu')) closeActiveOptionMenu();
   if (!e.target.closest('.emoji-picker-wrap')&&!e.target.closest('.emoji-trigger')) closeEmojiPicker();
-  if (!e.target.closest('.msg-action-menu')&&!e.target.closest('.msg-action-btn')) closeMsgActionMenu();
-  // Tap outside selection exits it
+  if (!e.target.closest('.msg-action-menu')&&!e.target.closest('.bubble-action-btn')) closeMsgActionMenu();
   if (selectionModeActive && !e.target.closest('[data-msg-id]') && !e.target.closest('#selectionBar')) {
     exitSelectionMode();
   }
@@ -535,13 +512,13 @@ async function delNote(id) {
 // ========== EMOJI PICKER ==========
 const EMOJI_CATEGORIES = [
   { icon:'😀', label:'Smileys', emojis:['😀','😃','😄','😁','😆','😅','🤣','😂','🙂','🙃','😉','😊','😇','🥰','😍','🤩','😘','😗','☺️','😚','😙','🥲','😋','😛','😜','🤪','😝','🤑','🤗','🤭','🤫','🤔','🤐','🤨','😐','😑','😶','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🤧','🥵','🥶','🥴','😵','💫','🤯','🤠','🥳','🥸','😎','🤓','🧐','😕','😟','🙁','☹️','😮','😯','😲','😳','🥺','😦','😧','😨','😰','😥','😢','😭','😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡','😠','🤬','😈','👿','💀','☠️','💩','🤡','👹','👺','👻','👽','👾','🤖'] },
-  { icon:'❤️', label:'Hearts', emojis:['❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','💟','☮️','✝️','☪️','🕉️','✡️','🔯','🕎','☯️','☦️','🛐','⛎','♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓','🆔','⚛️','🉑','☢️','☣️','📴','📳','🈶','🈚','🈸','🈺','🈷️','✴️','🆚','💮','🉐','㊙️','㊗️','🈴','🈵','🈹','🈲','🅰️','🅱️','🆎','🆑','🅾️','🆘','❌','⭕','🛑','⛔','📛','🚫','💯','💢','♨️','🚷','🚯','🚳','🚱','🔞','📵','🔕','🔇','🔈','🔉','🔊','📢','📣','📯','🔔','🔔'] },
-  { icon:'👋', label:'People', emojis:['👋','🤚','🖐️','✋','🖖','👌','🤌','🤏','✌️','🤞','🤟','🤘','🤙','👈','👉','👆','🖕','👇','☝️','👍','👎','✊','👊','🤛','🤜','👏','🙌','👐','🤲','🤝','🙏','✍️','💅','🤳','💪','🦾','🦵','🦿','🦶','👂','🦻','👃','🫀','🫁','🧠','🦷','🦴','👀','👁️','👅','👄','💋','🩸'] },
-  { icon:'🐱', label:'Animals', emojis:['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐻‍❄️','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🙈','🙉','🙊','🐔','🐧','🐦','🐤','🦆','🦅','🦉','🦇','🐺','🐗','🐴','🦄','🐝','🪱','🐛','🦋','🐌','🐞','🐜','🪲','🦟','🦗','🪳','🕷️','🦂','🐢','🐍','🦎','🦖','🦕','🐙','🦑','🦐','🦞','🦀','🐡','🐠','🐟','🐬','🐳','🐋','🦈','🐊','🐅','🐆','🦓','🦍','🦧','🦣','🐘','🦛','🦏','🐪','🐫','🦒','🦘','🦬','🐃','🐂','🐄','🐎','🐖','🐏','🐑','🦙','🐐','🦌','🐕','🐩','🦮','🐕‍🦺','🐈','🐈‍⬛','🐓','🦃','🦤','🦚','🦜','🦢','🦩','🕊️','🐇','🦝','🦨','🦡','🦫','🦦','🦥','🐁','🐀','🐿️','🦔'] },
-  { icon:'🍎', label:'Food', emojis:['🍏','🍎','🍐','🍊','🍋','🍌','🍉','🍇','🍓','🫐','🍈','🍒','🍑','🥭','🍍','🥥','🥝','🍅','🍆','🥑','🥦','🥬','🥒','🌶️','🫑','🧄','🧅','🥔','🍠','🥐','🥯','🍞','🥖','🥨','🧀','🥚','🍳','🧈','🥞','🧇','🥓','🥩','🍗','🍖','🌭','🍔','🍟','🍕','🫓','🥪','🥙','🧆','🌮','🌯','🫔','🥗','🥘','🫕','🥫','🍝','🍜','🍲','🍛','🍣','🍱','🥟','🦪','🍤','🍙','🍚','🍘','🍥','🥮','🍢','🧁','🍰','🎂','🍮','🍭','🍬','🍫','🍿','🍩','🍪','🌰','🥜','🍯','🧃','🥤','🧋','☕','🍵','🧉','🍺','🍻','🥂','🍷','🥃','🍸','🍹','🍾','🧊'] },
-  { icon:'⚽', label:'Activity', emojis:['⚽','🏀','🏈','⚾','🥎','🏐','🏉','🎾','🥏','🎱','🪀','🏓','🏸','🏒','🏑','🥍','🏏','🪃','🥅','⛳','🪁','🎣','🤿','🎽','🎿','🛷','🥌','🎯','🪃','🎱','🔫','🎮','🕹️','🎲','🧩','🧸','🪆','♟️','🪅','🎭','🎨','🖼️','🎰','🚗','🏎️','🏍️','🛵','🚲','🛴','🛹','🛼','🚏','🛣️','🛤️','🛞','⛽','🚨','🚥','🚦','🛑','🚧'] },
-  { icon:'🌍', label:'Travel', emojis:['🌍','🌎','🌏','🌐','🗺️','🧭','🏔️','⛰️','🌋','🗻','🏕️','🏖️','🏜️','🏝️','🏞️','🏟️','🏛️','🏗️','🧱','🏘️','🏚️','🏠','🏡','🏢','🏣','🏤','🏥','🏦','🏨','🏩','🏪','🏫','🏬','🏭','🏯','🏰','💒','🗼','🗽','⛪','🕌','🛕','🕍','⛩️','🕋','⛲','⛺','🌁','🌃','🏙️','🌄','🌅','🌆','🌇','🌉','♾️','🎠','🎡','🎢','💈','🎪','🚂','🚃','🚄','🚅','🚆','🚇','🚈','🚉','🚊','🚝','🚞','🚋','🚌','🚍','🚎','🚐','🚑','🚒','🚓','🚔','🚕','🚖','✈️','🛫','🛬','🛩️','💺','🚀','🛸','🚁','🛶','⛵','🚤','🛥️','🛳️','⛴️','🚢'] },
-  { icon:'💡', label:'Objects', emojis:['⌚','📱','💻','⌨️','🖥️','🖨️','🖱️','🖲️','💽','💾','💿','📀','📼','📷','📸','📹','🎥','📽️','🎞️','📞','☎️','📟','📠','📺','📻','🧭','⏱️','⏲️','⏰','🕰️','⌛','⏳','📡','🔋','🔌','💡','🔦','🕯️','🪔','🧯','🛢️','💰','💴','💵','💶','💷','💸','💳','🪙','💹','✉️','📧','📨','📩','📪','📫','📬','📭','📮','🗳️','✏️','✒️','🖊️','🖋️','📝','📁','📂','🗂️','📅','📆','🗒️','🗓️','📇','📈','📉','📊','📋','📌','📍','✂️','🗃️','🗄️','🗑️','🔒','🔓','🔏','🔐','🔑','🗝️','🔨','🪓','⛏️','⚒️','🛠️','🗡️','⚔️','🛡️','🔧','🔩','⚙️','🗜️','🔗','⛓️','🪝','🧰','🪜','🧲','🪜'] },
+  { icon:'❤️', label:'Hearts', emojis:['❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','💟','☮️','✝️','☪️','🕉️','✡️','🔯','🕎','☯️','☦️','🛐'] },
+  { icon:'👋', label:'People', emojis:['👋','🤚','🖐️','✋','🖖','👌','🤌','🤏','✌️','🤞','🤟','🤘','🤙','👈','👉','👆','🖕','👇','☝️','👍','👎','✊','👊','🤛','🤜','👏','🙌','👐','🤲','🤝','🙏','✍️','💅','🤳','💪','🦾','🦵','🦿','🦶','👂','🦻','👃','🧠','🦷','🦴','👀','👁️','👅','👄','💋','🩸'] },
+  { icon:'🐱', label:'Animals', emojis:['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐻‍❄️','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🙈','🙉','🙊','🐔','🐧','🐦','🐤','🦆','🦅','🦉','🦇','🐺','🐗','🐴','🦄','🐝','🪱','🐛','🦋','🐌','🐞','🐜','🦟','🦗','🕷️','🦂','🐢','🐍','🦎','🐙','🦑','🦐','🦀','🐡','🐠','🐟','🐬','🐳','🐋','🦈'] },
+  { icon:'🍎', label:'Food', emojis:['🍏','🍎','🍐','🍊','🍋','🍌','🍉','🍇','🍓','🫐','🍒','🍑','🥭','🍍','🥥','🥝','🍅','🍆','🥑','🥦','🌶️','🧄','🧅','🥔','🍠','🥐','🥯','🍞','🥖','🧀','🥚','🍳','🧈','🥞','🧇','🥓','🥩','🍗','🍖','🌭','🍔','🍟','🍕','🌮','🌯','🥗','🥘','🍝','🍜','🍲','🍛','🍣','🍱','🥟','🍤','🍙','🍚','🍘','🍥','🥮','🧁','🍰','🎂','🍮','🍭','🍬','🍫','🍿','🍩','🍪','🌰','🥜','🍯','🧃','🥤','🧋','☕','🍵','🍺','🍻','🥂','🍷','🥃','🍸','🍹','🍾'] },
+  { icon:'⚽', label:'Activity', emojis:['⚽','🏀','🏈','⚾','🥎','🏐','🏉','🎾','🥏','🎱','🏓','🏸','🏒','🥅','⛳','🎯','🎮','🕹️','🎲','🧩','🧸','♟️','🎭','🎨','🎰','🚗','🏎️','🏍️','🛵','🚲','🛴','🛹','🎿','🛷','🥌'] },
+  { icon:'🌍', label:'Travel', emojis:['🌍','🌎','🌏','🌐','🗺️','🧭','🏔️','⛰️','🌋','🏕️','🏖️','🏜️','🏝️','🏟️','🏛️','🏗️','🏘️','🏠','🏡','🏢','🏣','🏤','🏥','🏦','🏨','🏪','🏫','🏬','🏭','🏯','🏰','💒','🗼','🗽','⛪','🕌','⛩️','🕋','⛲','⛺','🌁','🌃','🏙️','🌄','🌅','🌆','🌇','🌉','🎠','🎡','🎢','🎪','🚂','🚃','🚄','🚅','🚇','🚌','🚍','🚎','🚑','🚒','🚓','🚕','✈️','🛫','🛬','💺','🚀','🛸','🚁','🛶','⛵','🚤','🛥️','🛳️','🚢'] },
+  { icon:'💡', label:'Objects', emojis:['⌚','📱','💻','⌨️','🖥️','🖨️','🖱️','💽','💾','💿','📀','📷','📸','📹','🎥','📞','☎️','📺','📻','🧭','⏱️','⏰','📡','🔋','🔌','💡','🔦','🕯️','💰','💴','💵','💶','💷','💸','💳','🪙','✉️','📧','📝','📁','📂','📅','📆','📈','📉','📊','📋','📌','📍','✂️','🔒','🔓','🔑','🗝️','🔨','⚒️','🛠️','⚙️','🔗','⛓️','🧰','🧲','💊','🩺','🩻','🧪','🧬','🔬','🔭','📡'] },
 ];
 
 function buildEmojiPicker() {
@@ -631,7 +608,7 @@ function clearReplyBanner() {
   if (banner) banner.style.display = 'none';
 }
 
-// ========== MESSAGE ACTION MENU (non-touch) ==========
+// ========== MESSAGE ACTION MENU ==========
 var activeMsgActionMenu = null;
 function closeMsgActionMenu() {
   if (activeMsgActionMenu && activeMsgActionMenu.parentNode) activeMsgActionMenu.remove();
@@ -687,7 +664,7 @@ async function delMsg(id) {
   toast('Pesan dihapus');
 }
 
-// ========== CHAT UPLOAD ==========
+// ========== CHAT UPLOAD (via chat bar - no confirm modal) ==========
 async function doChatUpload(input) {
   if (!currentAccount) return;
   var file = input.files[0];
@@ -696,7 +673,6 @@ async function doChatUpload(input) {
   var ext = file.name.split('.').pop();
   var name = 'chat_' + Date.now() + '_' + Math.random().toString(36).slice(2,6) + '.' + ext;
   var uploadUrl = SB_URL + '/storage/v1/object/gallery/' + name;
-  var lastLoaded = 0, lastTime = Date.now();
   try {
     await new Promise(function(resolve, reject) {
       var xhr = new XMLHttpRequest();
@@ -704,21 +680,12 @@ async function doChatUpload(input) {
       xhr.setRequestHeader('Authorization', 'Bearer ' + SB_KEY);
       xhr.setRequestHeader('x-upsert', 'false');
       xhr.setRequestHeader('Cache-Control', '3600');
-      xhr.upload.onprogress = function(e) {
-        if (!e.lengthComputable) return;
-        var now = Date.now();
-        var percent = Math.round((e.loaded/e.total)*100);
-        var elapsed = (now-lastTime)/1000;
-        var speed = elapsed>0?(e.loaded-lastLoaded)/elapsed:0;
-        lastLoaded=e.loaded; lastTime=now;
-        showUploadProgress(percent, speed>0?fmtBytes(speed)+'/s':'—', fmtBytes(e.total-e.loaded)+' tersisa');
-      };
       xhr.onload = function(){xhr.status>=200&&xhr.status<300?resolve():reject(new Error(xhr.status));};
       xhr.onerror = function(){reject(new Error('Network error'));};
       xhr.send(file);
     });
   } catch(err) {
-    hideUploadProgress(); toast('Upload gagal', false); input.value=''; return;
+    toast('Upload gagal', false); input.value=''; return;
   }
   var pub = sb.storage.from('gallery').getPublicUrl(name);
   var mediaUrl = pub.data.publicUrl;
@@ -727,9 +694,153 @@ async function doChatUpload(input) {
     message: msgContent, user_id: uid,
     sender_name: currentAccount.name, sender_role: currentAccount.role
   }]);
-  hideUploadProgress();
   if (res.error) { toast('Gagal kirim media', false); } else { toast('Media terkirim ✓'); }
   input.value='';
+}
+
+// ========== GALLERY UPLOAD CONFIRM MODAL ==========
+function triggerUploadConfirm(input) {
+  if (!currentAccount || currentAccount.role !== 'admin') {
+    toast('Hanya admin yang bisa upload', false);
+    input.value = '';
+    return;
+  }
+  var file = input.files[0];
+  if (!file) return;
+  pendingUploadFile = file;
+
+  // Fill modal info
+  document.getElementById('uploadFileName').textContent = file.name;
+  document.getElementById('uploadFileSize').textContent = fmtBytes(file.size) + ' · ' + (file.type || 'unknown');
+
+  // Reset progress
+  document.getElementById('uploadProgressWrap').style.display = 'none';
+  document.getElementById('uploadProgressFill').style.width = '0%';
+  document.getElementById('uploadPctLabel').textContent = '0%';
+  document.getElementById('uploadSpeedLabel').textContent = '—';
+  document.getElementById('uploadRemainLabel').textContent = '—';
+
+  // Reset buttons
+  var goBtn = document.getElementById('uploadGoBtn');
+  var cancelBtn = document.getElementById('uploadCancelBtn');
+  var closeBtn = document.getElementById('uploadModalCloseBtn');
+  goBtn.disabled = false;
+  goBtn.textContent = 'Upload';
+  cancelBtn.textContent = 'Batal';
+  closeBtn.style.display = '';
+
+  document.getElementById('uploadConfirmModal').classList.add('show');
+  // Reset file input so same file can be re-selected
+  input.value = '';
+}
+
+function cancelUploadModal() {
+  // Abort ongoing upload if any
+  if (uploadXHR) {
+    try { uploadXHR.abort(); } catch(e){}
+    uploadXHR = null;
+  }
+  pendingUploadFile = null;
+  document.getElementById('uploadConfirmModal').classList.remove('show');
+}
+
+async function startGalleryUpload() {
+  if (!pendingUploadFile) return;
+  var file = pendingUploadFile;
+
+  var goBtn = document.getElementById('uploadGoBtn');
+  var cancelBtn = document.getElementById('uploadCancelBtn');
+  var closeBtn = document.getElementById('uploadModalCloseBtn');
+
+  // Show progress, disable upload btn, change cancel to Batal
+  goBtn.disabled = true;
+  goBtn.textContent = 'Mengupload...';
+  closeBtn.style.display = 'none'; // hide X during upload
+  cancelBtn.textContent = 'Batalkan';
+
+  document.getElementById('uploadProgressWrap').style.display = 'flex';
+
+  var ext = file.name.split('.').pop();
+  var name = Date.now() + '_' + Math.random().toString(36).slice(2,6) + '.' + ext;
+  var uploadUrl = SB_URL + '/storage/v1/object/gallery/' + name;
+
+  var lastLoaded = 0, lastTime = Date.now();
+  var success = false;
+
+  try {
+    await new Promise(function(resolve, reject) {
+      var xhr = new XMLHttpRequest();
+      uploadXHR = xhr;
+      xhr.open('POST', uploadUrl, true);
+      xhr.setRequestHeader('Authorization', 'Bearer ' + SB_KEY);
+      xhr.setRequestHeader('x-upsert', 'false');
+      xhr.setRequestHeader('Cache-Control', '3600');
+
+      xhr.upload.onprogress = function(e) {
+        if (!e.lengthComputable) return;
+        var now = Date.now();
+        var percent = Math.round((e.loaded / e.total) * 100);
+        var elapsed = (now - lastTime) / 1000;
+        var speed = elapsed > 0 ? (e.loaded - lastLoaded) / elapsed : 0;
+        lastLoaded = e.loaded; lastTime = now;
+
+        document.getElementById('uploadProgressFill').style.width = percent + '%';
+        document.getElementById('uploadPctLabel').textContent = percent + '%';
+        document.getElementById('uploadSpeedLabel').textContent = speed > 0 ? fmtBytes(speed) + '/s' : '—';
+        document.getElementById('uploadRemainLabel').textContent = fmtBytes(e.total - e.loaded) + ' tersisa';
+      };
+
+      xhr.onload = function() {
+        uploadXHR = null;
+        if (xhr.status >= 200 && xhr.status < 300) resolve();
+        else reject(new Error('HTTP ' + xhr.status));
+      };
+      xhr.onerror = function() {
+        uploadXHR = null;
+        reject(new Error('Network error'));
+      };
+      xhr.onabort = function() {
+        uploadXHR = null;
+        reject(new Error('Dibatalkan'));
+      };
+      xhr.send(file);
+    });
+    success = true;
+  } catch(err) {
+    if (err.message === 'Dibatalkan') {
+      toast('Upload dibatalkan', false);
+    } else {
+      toast('Upload gagal: ' + err.message, false);
+    }
+    // Reset modal state
+    goBtn.disabled = false;
+    goBtn.textContent = 'Upload';
+    cancelBtn.textContent = 'Batal';
+    closeBtn.style.display = '';
+    document.getElementById('uploadProgressWrap').style.display = 'none';
+    document.getElementById('uploadConfirmModal').classList.remove('show');
+    pendingUploadFile = null;
+    return;
+  }
+
+  if (!success) return;
+
+  // Save to DB
+  var pub = sb.storage.from('gallery').getPublicUrl(name);
+  var dbRes = await sb.from('gallery').insert([{file_url: pub.data.publicUrl, file_name: name}]);
+
+  if (dbRes.error) {
+    toast('Gagal simpan: ' + dbRes.error.message, false);
+  } else {
+    toast('Berhasil diupload ✓');
+    galleryLoaded = false;
+    loadGallery();
+  }
+
+  // Close modal automatically on success
+  pendingUploadFile = null;
+  uploadXHR = null;
+  document.getElementById('uploadConfirmModal').classList.remove('show');
 }
 
 // ========== CHAT ==========
@@ -751,47 +862,91 @@ function buildMsgEl(m) {
   var isVidMsg = msgContent.startsWith('[video]');
   var mediaUrl = (isImgMsg || isVidMsg) ? msgContent.slice(isImgMsg?5:7) : null;
 
-  var replyHtml = '';
+  // Build the action button (inside bubble)
+  var actionBtn = document.createElement('button');
+  actionBtn.className = 'bubble-action-btn';
+  actionBtn.title = 'Opsi';
+  actionBtn.textContent = '⋮';
+  actionBtn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    showMsgActionMenu(m.id, m.sender_name, m.message || '', actionBtn);
+  });
+
+  // Build reply preview
+  var replyEl = null;
   if (m.reply_to_name && m.reply_to_text) {
     var rColor = m.reply_to_name === "Jef'z" ? '#3d5afe' : '#e91e8c';
     var rPreview = m.reply_to_text.length > 50 ? m.reply_to_text.slice(0,50)+'…' : m.reply_to_text;
     if (rPreview.startsWith('[img]')||rPreview.startsWith('[video]')) rPreview = rPreview.startsWith('[img]')?'🖼 Foto':'🎬 Video';
-    replyHtml = '<div class="reply-preview" style="border-left:3px solid '+rColor+'">' +
+    replyEl = document.createElement('div');
+    replyEl.className = 'reply-preview';
+    replyEl.style.borderLeft = '3px solid ' + rColor;
+    replyEl.innerHTML =
       '<span class="reply-prev-name" style="color:'+rColor+'">'+esc(m.reply_to_name)+'</span>' +
-      '<span class="reply-prev-text">'+esc(rPreview)+'</span>' +
-    '</div>';
+      '<span class="reply-prev-text">'+esc(rPreview)+'</span>';
   }
 
-  var bubbleInner;
+  // Build bubble content
+  var bubble = document.createElement('div');
+  bubble.className = 'bubble';
+
+  // Insert action btn first (absolutely positioned)
+  bubble.appendChild(actionBtn);
+
+  // Insert reply preview
+  if (replyEl) bubble.appendChild(replyEl);
+
+  // Insert main content
   if (isImgMsg && mediaUrl) {
-    bubbleInner = '<img src="'+esc(mediaUrl)+'" class="bubble-img" loading="lazy" onclick="openLightbox(\''+esc(mediaUrl)+'\')" />';
+    var img = document.createElement('img');
+    img.src = mediaUrl;
+    img.className = 'bubble-img';
+    img.loading = 'lazy';
+    img.onclick = function(e) { e.stopPropagation(); openLightbox(mediaUrl); };
+    bubble.appendChild(img);
   } else if (isVidMsg && mediaUrl) {
-    bubbleInner = '<video src="'+esc(mediaUrl)+'" class="bubble-vid" preload="metadata" controls playsinline></video>';
+    var vid = document.createElement('video');
+    vid.src = mediaUrl;
+    vid.className = 'bubble-vid';
+    vid.preload = 'metadata';
+    vid.controls = true;
+    vid.playsInline = true;
+    bubble.appendChild(vid);
   } else {
-    bubbleInner = esc(msgContent);
+    var textNode = document.createTextNode(msgContent);
+    bubble.appendChild(textNode);
   }
 
-  // Always show action button (both touch and non-touch)
-  var actionBtn = '<button class="msg-action-btn" title="Opsi" onclick="showMsgActionMenu(\''+m.id+'\',\''+esc(m.sender_name)+'\',\''+esc(m.message||'')+'\',this)">⋮</button>';
+  // Time
+  var btime = document.createElement('span');
+  btime.className = 'btime';
+  btime.textContent = fmtTime(m.created_at);
+  bubble.appendChild(btime);
 
-  var senderHtml = !isMe ? '<span class="msg-sender" style="color:'+nameColor+'">'+esc(m.sender_name)+roleTag+'</span>' : '';
+  // Sender label (only for theirs)
+  var blockInner = document.createElement('div');
+  blockInner.className = 'msg-block-inner';
 
-  d.innerHTML =
-    '<div class="msg-swipe-wrap">' +
-      '<div class="msg-block">' +
-        '<div class="msg-action-wrap">' + actionBtn + '</div>' +
-        '<div class="msg-block-inner">' +
-          senderHtml +
-          '<div class="bubble">' +
-            replyHtml +
-            bubbleInner +
-            '<span class="btime">'+fmtTime(m.created_at)+'</span>' +
-          '</div>' +
-        '</div>' +
-      '</div>' +
-    '</div>';
+  if (!isMe) {
+    var senderSpan = document.createElement('span');
+    senderSpan.className = 'msg-sender';
+    senderSpan.style.color = nameColor;
+    senderSpan.textContent = m.sender_name + roleTag;
+    blockInner.appendChild(senderSpan);
+  }
+  blockInner.appendChild(bubble);
 
-  // Touch: long-press to enter selection mode (always active on touch)
+  var msgBlock = document.createElement('div');
+  msgBlock.className = 'msg-block';
+  msgBlock.appendChild(blockInner);
+
+  var swipeWrap = document.createElement('div');
+  swipeWrap.className = 'msg-swipe-wrap';
+  swipeWrap.appendChild(msgBlock);
+
+  d.appendChild(swipeWrap);
+
+  // Touch: long-press to enter selection mode
   initLongPressSelect(d, m, canDelete);
   // Touch: swipe to reply
   initSwipeReply(d, m);
@@ -807,10 +962,11 @@ function initLongPressSelect(rowEl, m, canDelete) {
   var moved = false;
 
   bubble.addEventListener('touchstart', function(e) {
+    // Don't trigger on action button
+    if (e.target.closest('.bubble-action-btn')) return;
     moved = false;
     pressTimer = setTimeout(function() {
       if (!moved && m.id) {
-        // Haptic if supported
         if (navigator.vibrate) navigator.vibrate(40);
         enterSelectionMode(String(m.id));
       }
@@ -842,7 +998,7 @@ function initSwipeReply(rowEl, m) {
   }, { passive: true });
 
   swipeWrap.addEventListener('touchmove', function(e) {
-    if (selectionModeActive) return; // don't swipe while in selection mode
+    if (selectionModeActive) return;
     var t = e.touches[0];
     dx = t.clientX - startX;
     var dy = Math.abs(t.clientY - startY);
@@ -870,8 +1026,7 @@ function initSwipeReply(rowEl, m) {
   });
 }
 
-// ===== FIX: robust dedup — track both real ids AND pending =====
-var pendingMsgKey = null; // tracks the fake msg to avoid double
+var pendingMsgKey = null;
 
 function appendMsg(m, smooth) {
   var el = document.getElementById('chatList');
@@ -910,9 +1065,7 @@ function startChatSync() {
     .on('postgres_changes',{event:'INSERT',schema:'public',table:'chat_messages'},function(payload){
       if (!isChatActive||!payload.new) return;
       var newId = String(payload.new.id);
-      // If we already have this id (e.g. from optimistic render), skip
       if (seenMsgIds.has(newId)) return;
-      // If sender is us and there's a pending element, claim it
       if (currentAccount && payload.new.sender_name === currentAccount.name) {
         var el = document.getElementById('chatList');
         var pend = el ? el.querySelector('[data-pending]') : null;
@@ -933,7 +1086,6 @@ function startChatSync() {
     })
     .subscribe();
 
-  // Poll — only fetch messages newer than the latest seen to avoid any duplication
   pollTimer = setInterval(async function(){
     if (!isChatActive||!chatLoaded) return;
     var res=await sb.from('chat_messages').select('*').order('created_at',{ascending:false}).limit(20);
@@ -944,11 +1096,7 @@ function startChatSync() {
   }, 4000);
 }
 
-// ===== FIX: Enter = newline, send only via button =====
-// (Handled in HTML: onkeydown removed from textarea, send button only)
-// We also ensure the textarea in HTML no longer has the Enter-sends handler.
-// This function is kept for the send button.
-var isSending = false; // debounce guard
+var isSending = false;
 
 async function sendMsg() {
   if (isSending) return;
@@ -988,8 +1136,6 @@ async function sendMsg() {
     var pend=el.querySelector('[data-pending]'); if (pend) pend.remove();
     toast('Gagal kirim',false); input.value=msg; return;
   }
-  // Claim the pending element with the real id from DB response
-  // Supabase v2 insert doesn't always return data, so we fetch the latest
   setTimeout(async function(){
     var pend=el.querySelector('[data-pending]'); if (!pend) return;
     var r=await sb.from('chat_messages').select('id').order('created_at',{ascending:false}).limit(1);
@@ -1018,8 +1164,14 @@ async function loadGallery() {
     var d=document.createElement('div'); d.className='g-item';
     if (isVid){
       var thumb=document.createElement('div'); thumb.className='g-video-thumb';
-      thumb.innerHTML='<video class="g-media g-video-preview" preload="metadata" muted playsinline src="'+esc(f.file_url)+'#t=0.001" onclick="openVideoLightbox(\''+esc(f.file_url)+'\')"></video><div class="g-play-icon"><svg viewBox="0 0 24 24" fill="white" width="28" height="28"><circle cx="12" cy="12" r="12" fill="rgba(0,0,0,0.5)"/><polygon points="10,8 18,12 10,16" fill="white"/></svg></div>';
       thumb.style.cssText='position:relative;width:100%;height:100%;';
+      var vid=document.createElement('video');
+      vid.className='g-media g-video-preview';
+      vid.preload='metadata'; vid.muted=true; vid.playsInline=true;
+      vid.src=f.file_url+'#t=0.001';
+      var playIcon=document.createElement('div'); playIcon.className='g-play-icon';
+      playIcon.innerHTML='<svg viewBox="0 0 24 24" fill="white" width="28" height="28"><circle cx="12" cy="12" r="12" fill="rgba(0,0,0,0.5)"/><polygon points="10,8 18,12 10,16" fill="white"/></svg>';
+      thumb.appendChild(vid); thumb.appendChild(playIcon);
       thumb.onclick=function(){openVideoLightbox(f.file_url);};
       d.appendChild(thumb);
     } else {
@@ -1037,40 +1189,6 @@ async function loadGallery() {
   el.appendChild(frag);
 }
 
-async function doUpload(input) {
-  if (!currentAccount||currentAccount.role!=='admin'){toast('Hanya admin yang bisa upload',false);return;}
-  var file=input.files[0]; if (!file) return;
-  var ext=file.name.split('.').pop();
-  var name=Date.now()+'_'+Math.random().toString(36).slice(2,6)+'.'+ext;
-  var uploadUrl=SB_URL+'/storage/v1/object/gallery/'+name;
-  var lastLoaded=0, lastTime=Date.now();
-  try {
-    await new Promise(function(resolve,reject){
-      var xhr=new XMLHttpRequest();
-      xhr.open('POST',uploadUrl,true);
-      xhr.setRequestHeader('Authorization','Bearer '+SB_KEY);
-      xhr.setRequestHeader('x-upsert','false');
-      xhr.setRequestHeader('Cache-Control','3600');
-      xhr.upload.onprogress=function(e){
-        if (!e.lengthComputable) return;
-        var now=Date.now(), percent=Math.round((e.loaded/e.total)*100);
-        var elapsed=(now-lastTime)/1000, speed=elapsed>0?(e.loaded-lastLoaded)/elapsed:0;
-        lastLoaded=e.loaded; lastTime=now;
-        showUploadProgress(percent, speed>0?fmtBytes(speed)+'/s':'—', fmtBytes(e.total-e.loaded)+' tersisa');
-      };
-      xhr.onload=function(){xhr.status>=200&&xhr.status<300?resolve():reject(new Error(xhr.status));};
-      xhr.onerror=function(){reject(new Error('Network error'));};
-      xhr.send(file);
-    });
-  } catch(err){hideUploadProgress();toast('Upload gagal: '+err.message,false);input.value='';return;}
-  var pub=sb.storage.from('gallery').getPublicUrl(name);
-  var dbRes=await sb.from('gallery').insert([{file_url:pub.data.publicUrl,file_name:name}]);
-  hideUploadProgress();
-  if (dbRes.error){toast('Gagal simpan: '+dbRes.error.message,false);input.value='';return;}
-  toast('Berhasil diupload ✓'); input.value='';
-  galleryLoaded=false; loadGallery();
-}
-
 async function delMedia(id, name) {
   if (!currentAccount||currentAccount.role!=='admin') return;
   if (!confirm('Hapus media ini?')) return;
@@ -1081,19 +1199,44 @@ async function delMedia(id, name) {
 }
 
 // ========== LIGHTBOX ==========
-function openLightbox(url){document.getElementById('lightboxImg').src=url;document.getElementById('lightbox').classList.add('show');}
-function closeLightbox(){
+// ONLY close via X button — clicking background does nothing
+function openLightbox(url) {
+  document.getElementById('lightboxImg').src = url;
+  document.getElementById('lightboxImg').style.display = '';
+  // Remove any leftover video
+  var vl = document.getElementById('lightboxVideo');
+  if (vl) { vl.pause(); vl.src=''; vl.remove(); }
+  document.getElementById('lightbox').classList.add('show');
+}
+
+function closeLightbox() {
   document.getElementById('lightbox').classList.remove('show');
-  document.getElementById('lightboxImg').src='';
-  document.getElementById('lightboxImg').style.display='';
-  var vl=document.getElementById('lightboxVideo');
-  if (vl){vl.pause();vl.src='';vl.remove();}
+  document.getElementById('lightboxImg').src = '';
+  document.getElementById('lightboxImg').style.display = '';
+  var vl = document.getElementById('lightboxVideo');
+  if (vl) { vl.pause(); vl.src=''; vl.remove(); }
 }
-function openVideoLightbox(url){
-  var lb=document.getElementById('lightbox');
-  document.getElementById('lightboxImg').style.display='none';
-  var vl=document.getElementById('lightboxVideo');
-  if (!vl){vl=document.createElement('video');vl.id='lightboxVideo';vl.controls=true;vl.style.cssText='max-width:94vw;max-height:88vh;border-radius:10px;object-fit:contain;';lb.appendChild(vl);}
-  vl.src=url; vl.play(); lb.classList.add('show');
+
+function openVideoLightbox(url) {
+  var lb = document.getElementById('lightbox');
+  document.getElementById('lightboxImg').style.display = 'none';
+  var vl = document.getElementById('lightboxVideo');
+  if (!vl) {
+    vl = document.createElement('video');
+    vl.id = 'lightboxVideo';
+    vl.controls = true;
+    vl.style.cssText = 'max-width:94vw;max-height:88vh;border-radius:10px;object-fit:contain;';
+    lb.appendChild(vl);
+  }
+  vl.src = url;
+  vl.play();
+  lb.classList.add('show');
 }
-document.addEventListener('keydown',function(e){if(e.key==='Escape'){closeLightbox();exitSelectionMode();}});
+
+// ESC key only closes via keyboard
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    closeLightbox();
+    exitSelectionMode();
+  }
+});
