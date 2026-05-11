@@ -25,10 +25,8 @@
     <h1 class="login-title">Jef'zNdfaa</h1>
     <p class="login-sub">Pilih akun untuk masuk</p>
 
-    <!-- Step 1: Pilih akun -->
     <div id="stepAccount">
       <div class="account-list">
-        <!-- Admin di atas, User di bawah -->
         <button class="account-card" onclick="selectAccount('Jef\'z','admin')">
           <div class="acc-avatar jefz">J</div>
           <div class="acc-info">
@@ -48,7 +46,6 @@
       </div>
     </div>
 
-    <!-- Step 2: Input PIN -->
     <div id="stepPin" style="display:none">
       <div class="back-row">
         <button class="back-btn" onclick="backToAccount()">← Kembali</button>
@@ -87,15 +84,50 @@
   <!-- CHAT TAB (DEFAULT) -->
   <div id="tabChat" class="tab active-tab">
     <div id="chatList" class="chat-list"></div>
+
+    <!-- REPLY BANNER -->
+    <div id="replyBanner" class="reply-banner">
+      <div class="reply-banner-bar"></div>
+      <div class="reply-banner-content">
+        <span class="reply-banner-name" id="replyBannerName"></span>
+        <span class="reply-banner-text" id="replyBannerText"></span>
+      </div>
+      <button class="reply-banner-close" onclick="clearReplyBanner()">✕</button>
+    </div>
+
+    <!-- CHAT BAR -->
     <div class="chat-bar">
-      <input type="text" id="chatInput" class="field chat-field" placeholder="Pesan..." onkeydown="if(event.key==='Enter')sendMsg()"/>
-      <button class="btn-send" onclick="sendMsg()">↑</button>
+      <!-- Emoji trigger -->
+      <button class="emoji-trigger" id="emojiTrigger" onclick="toggleEmojiPicker(event)" title="Emoji">
+        😊
+      </button>
+
+      <!-- Text input -->
+      <textarea id="chatInput" class="field chat-field" placeholder="Pesan..." rows="1"
+        oninput="autoResize(this)"
+        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMsg();}"></textarea>
+
+      <!-- Chat media upload -->
+      <label class="chat-upload-btn" title="Kirim foto/video">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2"/>
+          <circle cx="8.5" cy="8.5" r="1.5"/>
+          <polyline points="21 15 16 10 5 21"/>
+        </svg>
+        <input type="file" accept="image/*,video/*" style="display:none" onchange="doChatUpload(this)"/>
+      </label>
+
+      <!-- Send button — WA/IG style icon -->
+      <button class="btn-send" onclick="sendMsg()" title="Kirim">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+        </svg>
+      </button>
     </div>
   </div>
 
   <!-- NOTES TAB -->
   <div id="tabNotes" class="tab">
-    <!-- Countdown Banner -->
     <div class="notes-countdown-banner">
       <div class="countdown-label" id="countdownLabel">Menghitung...</div>
       <div class="countdown-value" id="countdown">—</div>
@@ -109,10 +141,13 @@
   <!-- GALLERY TAB -->
   <div id="tabGallery" class="tab">
     <div id="galleryGrid" class="gallery-grid"></div>
-    <!-- FAB Upload -->
     <div class="gallery-fab-wrap">
       <label class="fab-btn fab-upload-label" title="Upload">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="22" height="22"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="22" height="22">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
         <input type="file" id="fileUpload" accept="image/*,video/*" style="display:none" onchange="doUpload(this)"/>
       </label>
     </div>
@@ -153,35 +188,21 @@
 <!-- MODAL: Edit Catatan -->
 <div id="editModal" class="modal-overlay" onclick="closeEditModal(event)">
   <div class="modal-box modal-edit-box" id="editModalBox">
-    <!-- HEADER: tidak ikut scroll -->
     <div class="modal-header">
       <span class="modal-title">Edit Catatan</span>
       <button class="modal-close" onclick="closeEditModal()">✕</button>
     </div>
-    <!-- STICKY TOP: author + judul tidak ikut scroll -->
     <div class="edit-sticky-top">
       <div class="edit-author-row" id="editAuthorRow"></div>
       <div class="edit-title-wrap">
-        <textarea
-          id="editTitleInput"
-          class="edit-title-field"
-          placeholder="Judul catatan..."
-          rows="1"
-          oninput="autoResize(this)"
-        ></textarea>
+        <textarea id="editTitleInput" class="edit-title-field" placeholder="Judul catatan..." rows="1" oninput="autoResize(this)"></textarea>
       </div>
     </div>
-    <!-- SCROLLABLE: hanya kolom isi teks -->
     <div class="edit-scroll-area">
       <div class="edit-body-wrap">
-        <textarea
-          id="editBodyInput"
-          class="edit-body-field"
-          placeholder="Isi catatan..."
-        ></textarea>
+        <textarea id="editBodyInput" class="edit-body-field" placeholder="Isi catatan..."></textarea>
       </div>
     </div>
-    <!-- FOOTER: tombol simpan tidak ikut scroll -->
     <div class="edit-footer">
       <input type="hidden" id="editNoteId"/>
       <button class="btn-act btn-act-full" onclick="saveEditNote()">Simpan Perubahan</button>
