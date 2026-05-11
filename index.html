@@ -95,18 +95,13 @@
       <button class="reply-banner-close" onclick="clearReplyBanner()">✕</button>
     </div>
 
-    <!-- CHAT BAR — Enter now only creates newline, send via button -->
+    <!-- CHAT BAR -->
     <div class="chat-bar">
-      <!-- Emoji trigger -->
       <button class="emoji-trigger" id="emojiTrigger" onclick="toggleEmojiPicker(event)" title="Emoji">
         😊
       </button>
-
-      <!-- Text input: NO onkeydown Enter-send handler -->
       <textarea id="chatInput" class="field chat-field" placeholder="Pesan..." rows="1"
         oninput="autoResize(this)"></textarea>
-
-      <!-- Chat media upload -->
       <label class="chat-upload-btn" title="Kirim foto/video">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <rect x="3" y="3" width="18" height="18" rx="2"/>
@@ -115,8 +110,6 @@
         </svg>
         <input type="file" accept="image/*,video/*" style="display:none" onchange="doChatUpload(this)"/>
       </label>
-
-      <!-- Send button -->
       <button class="btn-send" onclick="sendMsg()" title="Kirim">
         <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
           <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
@@ -147,7 +140,7 @@
           <polyline points="17 8 12 3 7 8"/>
           <line x1="12" y1="3" x2="12" y2="15"/>
         </svg>
-        <input type="file" id="fileUpload" accept="image/*,video/*" style="display:none" onchange="doUpload(this)"/>
+        <input type="file" id="fileUpload" accept="image/*,video/*" style="display:none" onchange="triggerUploadConfirm(this)"/>
       </label>
     </div>
   </div>
@@ -224,11 +217,44 @@
   </div>
 </div>
 
+<!-- MODAL: Upload Konfirmasi (Gallery) -->
+<div id="uploadConfirmModal" class="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title">Upload Media</span>
+      <button class="modal-close" id="uploadModalCloseBtn" onclick="cancelUploadModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <!-- File info -->
+      <div>
+        <div class="upload-preview-name" id="uploadFileName">—</div>
+        <div class="upload-preview-type" id="uploadFileSize">—</div>
+      </div>
+      <!-- Progress (hidden until upload starts) -->
+      <div class="upload-progress-wrap" id="uploadProgressWrap" style="display:none">
+        <div class="upload-progress-bar-track">
+          <div class="upload-progress-bar-fill" id="uploadProgressFill"></div>
+        </div>
+        <div class="upload-progress-meta">
+          <span id="uploadSpeedLabel">—</span>
+          <span id="uploadRemainLabel">—</span>
+          <span class="upload-progress-pct" id="uploadPctLabel">0%</span>
+        </div>
+      </div>
+      <!-- Actions -->
+      <div class="upload-modal-actions">
+        <button class="btn-upload-cancel" id="uploadCancelBtn" onclick="cancelUploadModal()">Batal</button>
+        <button class="btn-upload-go" id="uploadGoBtn" onclick="startGalleryUpload()">Upload</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- TOAST -->
 <div id="toast" class="toast"></div>
 
 <!-- LIGHTBOX -->
-<div id="lightbox" class="lightbox" onclick="closeLightbox()">
+<div id="lightbox" class="lightbox">
   <button class="lightbox-close" onclick="closeLightbox()">✕</button>
   <img id="lightboxImg" src="" alt=""/>
 </div>
