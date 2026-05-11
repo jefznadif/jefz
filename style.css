@@ -69,7 +69,8 @@ body {
   z-index: 0;
   pointer-events: none;
   overflow: hidden;
-  /* Tidak ada background di sini — biar orb tembus ke body background */
+  background: var(--bg);
+  transition: background 0.5s;
 }
 
 /* Orb base — setiap orb punya @keyframes sendiri via JS */
@@ -375,11 +376,12 @@ body {
 .read-author-option:active { opacity:0.5; }
 
 /*
-  READ MODAL — modal-body tetap scroll normal (menyesuaikan isi).
-  read-body punya scroll sendiri hanya saat konten terlalu panjang.
+  READ MODAL — body teks SELALU scroll di dalam kotak sendiri.
+  .modal-body sendiri tidak perlu scroll karena hanya berisi
+  3 elemen: author row, read-body (flex:1), dan timestamp.
 */
 #readModal .modal-body {
-  overflow-y: auto;
+  overflow-y: hidden;  /* parent tidak scroll */
 }
 
 .modal-read .read-body {
@@ -392,10 +394,9 @@ body {
   background: var(--input-bg);
   border-radius: 12px;
   padding: 14px;
-  /* Tumbuh mengisi ruang, dan bisa scroll sendiri */
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
+  flex: 1;            /* isi sisa ruang */
+  min-height: 0;      /* penting untuk flex child */
+  overflow-y: auto;   /* hanya teks yang scroll */
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
 }
