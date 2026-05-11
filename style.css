@@ -85,7 +85,7 @@ body {
 }
 
 /* ===== STACKING — semua konten di atas #globalBg ===== */
-.page, .topbar, .bottom-nav, .tab, .modal-overlay, #toast, #lightbox, .notes-fab-wrap {
+.page, .topbar, .bottom-nav, .tab, .modal-overlay, #toast, #lightbox, .notes-fab-wrap, .gallery-fab-wrap {
   position: relative;
   z-index: 1;
 }
@@ -182,8 +182,42 @@ body {
   background: transparent;
 }
 
+/* ===== COUNTDOWN BANNER ===== */
+.notes-countdown-banner {
+  margin: 12px 14px 0;
+  padding: 14px 18px;
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border-radius: 16px;
+  box-shadow: var(--glass-shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.countdown-label {
+  font-family: var(--ff-sys);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text3);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.countdown-value {
+  font-family: var(--ff-sys);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  letter-spacing: -0.2px;
+  line-height: 1.4;
+}
+
 .notes-list {
-  padding: 14px 14px 110px;
+  padding: 10px 14px 110px;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -256,18 +290,32 @@ body {
 .note-option-item.edit { color: var(--accent); }
 .note-option-item.delete { color: var(--danger); border-top: 1px solid var(--separator); }
 
-/* FAB */
+/* FAB — Notes & Gallery shared style */
 .notes-fab-wrap { position:fixed; bottom:calc(var(--nav-h) + 18px); right:20px; z-index:150; }
-.fab-btn { width:52px; height:52px; border-radius:50%; border:none; background:var(--accent); color:white; font-size:26px; font-weight:300; cursor:pointer; box-shadow:0 4px 20px var(--accent-glow); display:flex; align-items:center; justify-content:center; transition:all 0.2s; }
+.gallery-fab-wrap { position:fixed; bottom:calc(var(--nav-h) + 18px); right:20px; z-index:150; }
+
+.fab-btn {
+  width:52px; height:52px; border-radius:50%; border:none;
+  background:var(--accent); color:white;
+  font-size:26px; font-weight:300; cursor:pointer;
+  box-shadow:0 4px 20px var(--accent-glow);
+  display:flex; align-items:center; justify-content:center;
+  transition:all 0.2s;
+}
 .fab-btn:hover { transform:scale(1.08); }
 .fab-btn:active { transform:scale(0.93); }
 
+/* FAB label variant for upload */
+.fab-upload-label {
+  font-size: 0; /* hide any text, show only icon */
+}
+.fab-upload-label svg {
+  pointer-events: none;
+}
+
 /* ===== GALLERY ===== */
 #tabGallery.active-tab { position:fixed; top:var(--topbar-h); bottom:var(--nav-h); left:0; right:0; overflow-y:auto; -webkit-overflow-scrolling:touch; background:transparent; }
-.gallery-header { padding:14px 14px 10px; display:flex; justify-content:flex-end; }
-.btn-upload { display:inline-block; background:var(--accent); color:white; border-radius:20px; padding:8px 18px; font-family:var(--ff-sys); font-size:14px; font-weight:500; cursor:pointer; box-shadow:0 2px 10px var(--accent-glow); transition:all 0.18s; }
-.btn-upload:active { transform:scale(0.96); }
-.gallery-grid { padding:0 12px 16px; display:grid; grid-template-columns:repeat(3,1fr); gap:3px; }
+.gallery-grid { padding:12px 12px 90px; display:grid; grid-template-columns:repeat(3,1fr); gap:3px; }
 .g-item { position:relative; border-radius:3px; overflow:hidden; aspect-ratio:1; background:var(--bg2); }
 .g-item:first-child { border-top-left-radius:12px; }
 .g-media { width:100%; height:100%; object-fit:cover; display:block; cursor:pointer; transition:transform 0.18s; }
@@ -400,7 +448,7 @@ body {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
-  padding: 12px 20px;
+  padding: 12px 20px 20px; /* tambah padding bawah biar teks terakhir tidak terpotong */
 }
 
 /* Footer: tombol simpan — tidak pernah scroll */
@@ -434,7 +482,7 @@ body {
   word-break: break-word;
   background: var(--input-bg);
   border-radius: 12px;
-  padding: 14px;
+  padding: 14px 14px 20px; /* tambah padding bawah */
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -487,8 +535,8 @@ body {
   background: transparent; border: none; outline: none;
   font-family: var(--ff-serif); font-size: 16px; color: var(--text);
   line-height: 1.8;
-  resize: none; padding: 14px;
-  /* Auto-resize via JS supaya kolom tumbuh bersama teks */
+  resize: none;
+  padding: 14px 14px 28px; /* tambah padding bawah biar teks terakhir tidak terpotong */
   overflow: hidden;
   display: block;
 }
