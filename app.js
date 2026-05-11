@@ -128,7 +128,6 @@ function startCountdown() {
     var labelEl=document.getElementById('countdownLabel'), valEl=document.getElementById('countdown');
     if (!labelEl||!valEl) return;
     labelEl.textContent = isCountdown ? "Menuju 18 Maret 2027 ♡" : "Sudah bersama selama ♡";
-    // Styled segments with numbers highlighted
     valEl.innerHTML =
       seg(years,'Thn') + seg(months,'Bln') + seg(days,'Hari') +
       '<br>' +
@@ -195,6 +194,7 @@ window.onload = function() {
     currentAccount={ name:accName, role:sessionStorage.getItem('accRole'), color:ACCOUNTS[accName]?ACCOUNTS[accName].color:'#3d5afe' };
     showDash();
   }
+  // Swipe ONLY on bottom nav bar
   initNavbarSwipe();
 };
 
@@ -227,45 +227,41 @@ function scrollBottom(el, smooth) { if(!el)return; requestAnimationFrame(functio
 function autoResize(el) { el.style.height='auto'; el.style.height=el.scrollHeight+'px'; }
 function fmtBytes(bytes) { if(bytes<1024)return bytes+' B'; if(bytes<1048576)return(bytes/1024).toFixed(1)+' KB'; return(bytes/1048576).toFixed(2)+' MB'; }
 
-// ========== NAVBAR SWIPE ==========
+// ========== NAVBAR SWIPE — HANYA DI NAVBAR ==========
 // Tab order: Notes(0), Chat(1), Gallery(2)
 const TAB_ORDER = ['Notes', 'Chat', 'Gallery'];
 const TAB_TITLES = { Notes:'Catatan', Chat:'ChatRoom', Gallery:'Gallery' };
 
 function initNavbarSwipe() {
-  // Swipe on the entire dash page content area (not just nav bar) to switch tabs
-  var dashPage = document.getElementById('dashPage');
-  if (!dashPage) return;
+  // Swipe HANYA pada element bottom-nav, bukan seluruh halaman
+  var nav = document.getElementById('bottomNav');
+  if (!nav) return;
+
   var startX = 0, startY = 0, navSwipeActive = false;
 
-  dashPage.addEventListener('touchstart', function(e) {
-    // Only swipe from edges for tab switch (to avoid conflict with chat/scroll)
-    var touch = e.touches[0];
-    startX = touch.clientX;
-    startY = touch.clientY;
+  nav.addEventListener('touchstart', function(e) {
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
     navSwipeActive = true;
   }, { passive: true });
 
-  dashPage.addEventListener('touchmove', function(e) {
+  nav.addEventListener('touchmove', function(e) {
     if (!navSwipeActive) return;
-    var dx = e.touches[0].clientX - startX;
+    var dx = Math.abs(e.touches[0].clientX - startX);
     var dy = Math.abs(e.touches[0].clientY - startY);
-    // Cancel if more vertical than horizontal
-    if (dy > Math.abs(dx) + 10) { navSwipeActive = false; }
+    if (dy > dx + 10) { navSwipeActive = false; }
   }, { passive: true });
 
-  dashPage.addEventListener('touchend', function(e) {
+  nav.addEventListener('touchend', function(e) {
     if (!navSwipeActive) return;
     var dx = e.changedTouches[0].clientX - startX;
     var dy = Math.abs(e.changedTouches[0].clientY - startY);
     navSwipeActive = false;
 
-    // Must be a clear horizontal swipe
-    if (Math.abs(dx) < 80 || dy > 60) return;
+    if (Math.abs(dx) < 60 || dy > 50) return;
 
-    // Don't trigger if inside an open modal
+    // Jangan trigger kalau ada modal/lightbox terbuka
     if (document.querySelector('.modal-overlay.show')) return;
-    // Don't trigger if in lightbox
     if (document.getElementById('lightbox').classList.contains('show')) return;
 
     var curTab = sessionStorage.getItem('activeTab') || 'Chat';
@@ -273,8 +269,8 @@ function initNavbarSwipe() {
     if (idx === -1) return;
 
     var next = idx;
-    if (dx < 0) next = Math.min(idx + 1, TAB_ORDER.length - 1); // swipe left → next
-    else         next = Math.max(idx - 1, 0);                     // swipe right → prev
+    if (dx < 0) next = Math.min(idx + 1, TAB_ORDER.length - 1);
+    else         next = Math.max(idx - 1, 0);
 
     if (next !== idx) {
       var newTab = TAB_ORDER[next];
@@ -589,11 +585,9 @@ async function loadNotes() {
     summary.appendChild(sumMain); summary.appendChild(sumMeta);
     summary.addEventListener('click',function(e){
       if (e.target===chevron||chevron.contains(e.target)) return;
-      // If note selection mode → toggle
       if (noteSelectionModeActive) { toggleNoteSelection(String(n.id)); return; }
       openReadModal(n.id);
     });
-    // Long press on note card → enter note selection mode
     initNoteLongPress(d, n.id);
     d.appendChild(summary); frag.appendChild(d);
   });
@@ -607,7 +601,7 @@ function initNoteLongPress(cardEl, noteId) {
     if (e.target.closest('.note-chevron')) return;
     moved = false;
     startX = e.touches[0].clientX; startY = e.touches[0].clientY;
-    if (noteSelectionModeActive) return; // already in mode
+    if (noteSelectionModeActive) return;
     pressTimer = setTimeout(function() {
       if (!moved) {
         if (navigator.vibrate) navigator.vibrate(40);
@@ -743,7 +737,6 @@ function buildEmojiPicker() {
   panel.id = 'emojiPickerPanel';
   panel.className = 'emoji-picker-wrap';
 
-  // Swipe hint bar
   var hint = document.createElement('div');
   hint.className = 'emoji-swipe-hint';
   panel.appendChild(hint);
@@ -782,7 +775,6 @@ function buildEmojiPicker() {
   var chatBar = document.querySelector('.chat-bar');
   if (chatBar) chatBar.appendChild(panel);
 
-  // Swipe left/right on emoji panel to change category
   initEmojiSwipe(panel, tabs);
   return panel;
 }
@@ -790,7 +782,6 @@ function buildEmojiPicker() {
 function initEmojiSwipe(panel, tabsEl) {
   var startX = 0, startY = 0, swiping = false;
   panel.addEventListener('touchstart', function(e) {
-    // Only on body (not tabs)
     startX = e.touches[0].clientX;
     startY = e.touches[0].clientY;
     swiping = false;
@@ -1261,8 +1252,7 @@ async function sendMsg() {
 }
 
 // ========== GALLERY ==========
-// Gallery items for lightbox navigation
-var galleryItems = []; // [{url, isVid}]
+var galleryItems = [];
 
 async function loadGallery() {
   var el=document.getElementById('galleryGrid');
@@ -1315,61 +1305,69 @@ async function delMedia(id, name) {
   toast('Dihapus'); galleryLoaded=false; loadGallery();
 }
 
-// ========== LIGHTBOX (IG-Style, swipeable) ==========
+// ========== LIGHTBOX — MODAL STYLE, NO LAG ==========
+// Pakai modal overlay sama seperti modal lainnya
+// Navbar TIDAK akan ikut gerak karena lightbox di z-index atas, fixed fullscreen
 var lbCurrentIdx = -1;
-var lbSwipeStartX = 0, lbSwipeStartY = 0, lbSwiping = false;
+var lbSwipeStartX = 0, lbSwiping = false;
 
-function openLightbox(idxOrUrl) {
+function openLightbox(idx) {
+  lbCurrentIdx = typeof idx === 'number' ? idx : -1;
   var lb = document.getElementById('lightbox');
-  var wrap = document.getElementById('lightboxMediaWrap');
-
-  if (typeof idxOrUrl === 'number') {
-    lbCurrentIdx = idxOrUrl;
-    _renderLightboxItem(idxOrUrl, wrap);
-  } else {
-    // Legacy: called with URL directly (no index, single image)
-    lbCurrentIdx = -1;
-    _setLightboxImg(idxOrUrl, wrap);
-  }
+  _renderLightboxItem(lbCurrentIdx);
   _updateLightboxNav();
   lb.classList.add('show');
-  initLightboxSwipe(wrap);
+  // Lock body scroll
+  document.body.style.overflow = 'hidden';
 }
 
 function openLightboxFromChat(url) {
-  // Chat images have no index, just show single
-  openLightbox(url);
+  // Single image from chat, no index
+  lbCurrentIdx = -1;
+  var lb = document.getElementById('lightbox');
+  var wrap = document.getElementById('lightboxMediaWrap');
+  _clearLightboxMedia(wrap);
+  var img = document.getElementById('lightboxImg');
+  img.src = url; img.style.display = '';
+  document.getElementById('lightboxCounter').innerHTML = '';
+  document.getElementById('lightboxPrev').style.display = 'none';
+  document.getElementById('lightboxNext').style.display = 'none';
+  lb.classList.add('show');
+  document.body.style.overflow = 'hidden';
 }
 
-function _renderLightboxItem(idx, wrap) {
+function _clearLightboxMedia(wrap) {
   if (!wrap) wrap = document.getElementById('lightboxMediaWrap');
-  // Clear existing video
   var oldVid = wrap.querySelector('video');
-  if (oldVid) { oldVid.pause(); oldVid.src=''; oldVid.remove(); }
+  if (oldVid) { try { oldVid.pause(); oldVid.src = ''; } catch(e){} oldVid.remove(); }
+  var img = document.getElementById('lightboxImg');
+  if (img) { img.src = ''; img.style.display = 'none'; }
+}
+
+function _renderLightboxItem(idx) {
+  var wrap = document.getElementById('lightboxMediaWrap');
+  _clearLightboxMedia(wrap);
   var img = document.getElementById('lightboxImg');
 
-  if (!galleryItems[idx]) return;
+  if (idx < 0 || !galleryItems[idx]) return;
   var item = galleryItems[idx];
+
   if (item.isVid) {
     img.style.display = 'none';
     var vid = document.createElement('video');
     vid.id = 'lightboxVideo';
-    vid.src = item.url; vid.controls = true; vid.playsInline = true;
-    vid.style.cssText = 'max-width:100%;max-height:80vh;width:auto;height:auto;object-fit:contain;display:block;';
+    vid.src = item.url;
+    vid.controls = true;
+    vid.playsInline = true;
+    vid.autoplay = false;
+    // Style inline agar tidak kena override
+    vid.style.cssText = 'max-width:100%;max-height:76vh;width:auto;height:auto;object-fit:contain;display:block;border-radius:0;background:transparent;';
     wrap.appendChild(vid);
-    setTimeout(function(){ vid.play().catch(function(){}); }, 100);
   } else {
-    img.src = item.url; img.style.display = '';
+    img.src = item.url;
+    img.style.display = '';
   }
   _updateLightboxCounter(idx);
-}
-
-function _setLightboxImg(url, wrap) {
-  var oldVid = wrap.querySelector('video');
-  if (oldVid) { oldVid.pause(); oldVid.src=''; oldVid.remove(); }
-  var img = document.getElementById('lightboxImg');
-  img.src = url; img.style.display = '';
-  document.getElementById('lightboxCounter').innerHTML = '';
 }
 
 function _updateLightboxNav() {
@@ -1386,9 +1384,10 @@ function _updateLightboxNav() {
 
 function _updateLightboxCounter(idx) {
   var counter = document.getElementById('lightboxCounter');
-  if (!counter || galleryItems.length <= 1) { if (counter) counter.innerHTML=''; return; }
+  if (!counter) return;
+  if (galleryItems.length <= 1) { counter.innerHTML = ''; return; }
   var dots = '';
-  var total = Math.min(galleryItems.length, 12); // max 12 dots
+  var total = Math.min(galleryItems.length, 12);
   var start = Math.max(0, idx - 5);
   var end = Math.min(galleryItems.length - 1, start + total - 1);
   for (var i = start; i <= end; i++) {
@@ -1403,61 +1402,64 @@ function lightboxNav(dir) {
   if (next < 0 || next >= galleryItems.length) return;
   lbCurrentIdx = next;
   var wrap = document.getElementById('lightboxMediaWrap');
-  // Animate slide
-  wrap.style.transition = 'none';
-  wrap.style.transform = 'translateX(' + (dir > 0 ? '40px' : '-40px') + ')';
-  wrap.style.opacity = '0.5';
-  requestAnimationFrame(function(){
-    wrap.style.transition = 'transform 0.28s cubic-bezier(0.34,1.15,0.64,1), opacity 0.22s ease';
-    wrap.style.transform = 'translateX(0)';
-    wrap.style.opacity = '1';
-    _renderLightboxItem(lbCurrentIdx, wrap);
-    _updateLightboxNav();
-  });
-}
 
-function initLightboxSwipe(wrap) {
-  // Remove old listeners by cloning (simpler approach: just track on the lightbox overlay)
-  var lb = document.getElementById('lightbox');
-  lb.ontouchstart = function(e) {
-    var t = e.touches[0];
-    lbSwipeStartX = t.clientX; lbSwipeStartY = t.clientY; lbSwiping = false;
-  };
-  lb.ontouchmove = function(e) {
-    var dx = e.touches[0].clientX - lbSwipeStartX;
-    var dy = Math.abs(e.touches[0].clientY - lbSwipeStartY);
-    if (!lbSwiping && Math.abs(dx) > dy && Math.abs(dx) > 12) lbSwiping = true;
-    if (lbSwiping && wrap) {
-      wrap.style.transition = 'none';
-      wrap.style.transform = 'translateX(' + (dx * 0.45) + 'px)';
-    }
-  };
-  lb.ontouchend = function(e) {
-    if (!lbSwiping) return;
-    var dx = e.changedTouches[0].clientX - lbSwipeStartX;
-    lbSwiping = false;
-    if (wrap) { wrap.style.transition = 'transform 0.2s ease'; wrap.style.transform = 'translateX(0)'; }
-    if (Math.abs(dx) > 60) lightboxNav(dx < 0 ? 1 : -1);
-  };
+  // Animasi slide ringan
+  wrap.style.transition = 'opacity 0.15s ease, transform 0.15s ease';
+  wrap.style.opacity = '0';
+  wrap.style.transform = 'translateX(' + (dir > 0 ? '24px' : '-24px') + ')';
+
+  setTimeout(function() {
+    _renderLightboxItem(lbCurrentIdx);
+    _updateLightboxNav();
+    wrap.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
+    wrap.style.opacity = '1';
+    wrap.style.transform = 'translateX(0)';
+  }, 120);
 }
 
 function closeLightbox() {
   var lb = document.getElementById('lightbox');
   lb.classList.remove('show');
-  lb.ontouchstart = null; lb.ontouchmove = null; lb.ontouchend = null;
   var wrap = document.getElementById('lightboxMediaWrap');
-  var oldVid = wrap ? wrap.querySelector('video') : null;
-  if (oldVid) { oldVid.pause(); oldVid.src=''; oldVid.remove(); }
+  _clearLightboxMedia(wrap);
   var img = document.getElementById('lightboxImg');
-  if (img) { img.src=''; img.style.display=''; }
+  if (img) { img.src = ''; img.style.display = ''; }
   document.getElementById('lightboxCounter').innerHTML = '';
   lbCurrentIdx = -1;
+  lbSwiping = false;
+  // Restore body scroll
+  document.body.style.overflow = '';
+  // Reset wrap style
+  if (wrap) { wrap.style.opacity = ''; wrap.style.transform = ''; wrap.style.transition = ''; }
 }
 
-// Legacy: called from old code
-function openVideoLightbox(url) {
-  openLightbox(url); // will use URL path
-}
+// Swipe di lightbox overlay untuk navigasi
+(function() {
+  document.addEventListener('DOMContentLoaded', function() {
+    var lb = document.getElementById('lightbox');
+    if (!lb) return;
+
+    lb.addEventListener('touchstart', function(e) {
+      // Jangan handle kalau klik tombol close/nav
+      if (e.target.closest('.lightbox-close') || e.target.closest('.lightbox-prev') || e.target.closest('.lightbox-next')) return;
+      lbSwipeStartX = e.touches[0].clientX;
+      lbSwiping = false;
+    }, { passive: true });
+
+    lb.addEventListener('touchmove', function(e) {
+      var dx = Math.abs(e.touches[0].clientX - lbSwipeStartX);
+      var dy = Math.abs(e.touches[0].clientY - (e.touches[0].clientY)); // just dx check
+      if (dx > 12) lbSwiping = true;
+    }, { passive: true });
+
+    lb.addEventListener('touchend', function(e) {
+      if (!lbSwiping) return;
+      var dx = e.changedTouches[0].clientX - lbSwipeStartX;
+      lbSwiping = false;
+      if (Math.abs(dx) > 60) lightboxNav(dx < 0 ? 1 : -1);
+    });
+  });
+})();
 
 // ========== KEY EVENTS ==========
 document.addEventListener('keydown', function(e) {
