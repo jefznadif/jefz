@@ -1,6 +1,9 @@
 /* ===== RESET ===== */
 *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
 
+/* html & body HARUS transparent — background ada di #globalBg */
+html { background: transparent; }
+
 :root {
   --ff-sys:       -apple-system, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
   --ff-serif:     'New York', 'Georgia', 'Times New Roman', serif;
@@ -59,7 +62,7 @@ body {
   overscroll-behavior: none;
   transition: color 0.3s;
   position: relative;
-  background: var(--bg);
+  background: transparent;
 }
 
 /* ===== GLOBAL ANIMATED ORB BACKGROUND ===== */
@@ -69,19 +72,21 @@ body {
   z-index: 0;
   pointer-events: none;
   overflow: hidden;
-  background: var(--bg);
-  transition: background 0.5s;
+  background: #f0f2f7;       /* light default */
+  transition: background 0.4s;
+}
+/* Dark mode — class 'dark' di-apply ke #globalBg via JS */
+#globalBg.dark {
+  background: #05050a;
 }
 
-/* Orb base — setiap orb punya @keyframes sendiri via JS */
 .g-orb {
   position: absolute;
   border-radius: 50%;
   will-change: transform, opacity;
-  mix-blend-mode: normal;
 }
 
-/* stacking context */
+/* stacking context — semua konten halaman di atas #globalBg */
 .page, .topbar, .bottom-nav, .tab, .modal-overlay, #toast, #lightbox, .notes-fab-wrap {
   position: relative;
   z-index: 1;
@@ -313,7 +318,6 @@ body {
   border-radius: 20px 20px 0 0;
   width: 100%;
   max-width: 100%;
-  /* Tinggi default — JS akan override saat keyboard muncul */
   max-height: 90vh;
   display: flex;
   flex-direction: column;
@@ -323,6 +327,11 @@ body {
   border: 1px solid var(--separator);
   border-bottom: none;
   transition: max-height 0.22s ease;
+}
+/* Edit modal: tinggi ikut isi (tidak fixed-stretch) */
+#editModal .modal-box {
+  height: auto;
+  max-height: 92vh;
 }
 @media (min-width: 520px) {
   .modal-box {
@@ -354,7 +363,6 @@ body {
 
 /* BODY — yang scroll */
 .modal-body {
-  flex: 1;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
@@ -362,7 +370,26 @@ body {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  /* Tidak pakai flex:1 / min-height:0 — biarkan tinggi ikut isi */
+}
+
+/* Edit modal: body tidak scroll, tinggi ikut konten textarea */
+#editModal .modal-body {
+  overflow-y: visible;
+  flex: none;
+}
+
+/* Read modal: body scroll jika isi panjang */
+#readModal .modal-body {
+  flex: 1;
   min-height: 0;
+  overflow-y: auto;
+}
+/* Note modal: body scroll jika keyboard muncul */
+#noteModal .modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 /* ===== READ MODAL ===== */
@@ -376,12 +403,11 @@ body {
 .read-author-option:active { opacity:0.5; }
 
 /*
-  READ MODAL — body teks SELALU scroll di dalam kotak sendiri.
-  .modal-body sendiri tidak perlu scroll karena hanya berisi
-  3 elemen: author row, read-body (flex:1), dan timestamp.
+  READ MODAL — modal-body tetap scroll normal (menyesuaikan isi).
+  read-body punya scroll sendiri hanya saat konten terlalu panjang.
 */
 #readModal .modal-body {
-  overflow-y: hidden;  /* parent tidak scroll */
+  overflow-y: auto;
 }
 
 .modal-read .read-body {
@@ -394,9 +420,10 @@ body {
   background: var(--input-bg);
   border-radius: 12px;
   padding: 14px;
-  flex: 1;            /* isi sisa ruang */
-  min-height: 0;      /* penting untuk flex child */
-  overflow-y: auto;   /* hanya teks yang scroll */
+  /* Tumbuh mengisi ruang, dan bisa scroll sendiri */
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
 }
@@ -434,20 +461,18 @@ body {
   padding: 14px;
   border: 1.5px solid transparent;
   transition: border-color 0.18s;
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
+  /* Tidak flex:1 — biarkan tinggi mengikuti konten */
 }
 .edit-body-wrap:focus-within { border-color: var(--accent); }
 .edit-body-field {
-  width: 100%; flex: 1;
+  width: 100%;
   background: transparent; border: none; outline: none;
   font-family: var(--ff-serif); font-size: 16px; color: var(--text);
   line-height: 1.8; resize: none; padding: 0;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  min-height: 80px;
+  display: block;
+  min-height: 120px;   /* tinggi minimum nyaman */
+  /* tidak overflow scroll — biarkan auto-resize JS menangani */
+  overflow: hidden;
 }
 .edit-body-field::placeholder { color: var(--text3); }
 
