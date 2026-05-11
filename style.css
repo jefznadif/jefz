@@ -1,7 +1,6 @@
 /* ===== RESET ===== */
 *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
 
-/* html & body HARUS transparent — background ada di #globalBg */
 html { background: transparent; }
 
 :root {
@@ -72,10 +71,9 @@ body {
   z-index: 0;
   pointer-events: none;
   overflow: hidden;
-  background: #f0f2f7;       /* light default */
+  background: #f0f2f7;
   transition: background 0.4s;
 }
-/* Dark mode — class 'dark' di-apply ke #globalBg via JS */
 #globalBg.dark {
   background: #05050a;
 }
@@ -86,7 +84,7 @@ body {
   will-change: transform, opacity;
 }
 
-/* stacking context — semua konten halaman di atas #globalBg */
+/* ===== STACKING — semua konten di atas #globalBg ===== */
 .page, .topbar, .bottom-nav, .tab, .modal-overlay, #toast, #lightbox, .notes-fab-wrap {
   position: relative;
   z-index: 1;
@@ -184,19 +182,17 @@ body {
   background: transparent;
 }
 
-/* List container — padding bawah buat FAB */
 .notes-list {
   padding: 14px 14px 110px;
   display: flex;
   flex-direction: column;
-  gap: 10px;          /* jarak antar card */
+  gap: 10px;
 }
 
-/* Setiap note card berdiri sendiri, dengan padding dalam yang nyaman */
 .note-card {
   background: var(--bg2);
   border-radius: 16px;
-  overflow: visible;  /* ubah ke visible supaya shadow kelihatan */
+  overflow: visible;
   border: 1px solid var(--glass-border);
   backdrop-filter: var(--blur);
   -webkit-backdrop-filter: var(--blur);
@@ -205,12 +201,11 @@ body {
 }
 .note-card:active { transform: scale(0.987); }
 
-/* isi card punya padding yang lebih lega */
 .note-summary {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 16px 16px;   /* atas-bawah lebih longgar */
+  padding: 16px 16px;
   cursor: pointer;
   transition: background 0.12s;
   border-radius: 16px;
@@ -289,7 +284,7 @@ body {
 .nav-item.active { color:var(--accent); }
 .nav-item.active svg { transform:translateY(-1px); }
 
-/* ===== MODAL ===== */
+/* ===== MODAL BASE ===== */
 .modal-overlay {
   display: none;
   position: fixed; inset: 0;
@@ -299,7 +294,6 @@ body {
   z-index: 200;
   align-items: flex-end;
   justify-content: center;
-  /* padding bawah untuk safe area & keyboard */
   padding-bottom: env(safe-area-inset-bottom, 0);
 }
 @media (min-width: 520px) {
@@ -310,7 +304,6 @@ body {
 @keyframes popIn   { from{opacity:0;transform:scale(0.9)} to{opacity:1;transform:scale(1)} }
 @keyframes slideUp { from{opacity:0;transform:translateY(50px)} to{opacity:1;transform:translateY(0)} }
 
-/* Modal box dasar */
 .modal-box {
   background: var(--bg2);
   backdrop-filter: var(--blur);
@@ -326,12 +319,6 @@ body {
   box-shadow: 0 -4px 40px rgba(0,0,0,0.16);
   border: 1px solid var(--separator);
   border-bottom: none;
-  transition: max-height 0.22s ease;
-}
-/* Edit modal: tinggi ikut isi (tidak fixed-stretch) */
-#editModal .modal-box {
-  height: auto;
-  max-height: 92vh;
 }
 @media (min-width: 520px) {
   .modal-box {
@@ -345,7 +332,7 @@ body {
 .modal-read { max-width: 100%; }
 @media (min-width: 520px) { .modal-read { max-width: 460px; } }
 
-/* HEADER — tidak scroll */
+/* MODAL HEADER — tidak scroll, selalu terlihat */
 .modal-header {
   display: flex;
   justify-content: space-between;
@@ -361,7 +348,7 @@ body {
 .modal-close { background:var(--input-bg); border:none; border-radius:50%; width:30px; height:30px; font-size:13px; color:var(--text3); cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
 .modal-close:active { opacity:0.7; }
 
-/* BODY — yang scroll */
+/* MODAL BODY default — untuk noteModal & readModal */
 .modal-body {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
@@ -370,26 +357,26 @@ body {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  /* Tidak pakai flex:1 / min-height:0 — biarkan tinggi ikut isi */
-}
-
-/* Edit modal: body tidak scroll, tinggi ikut konten textarea */
-#editModal .modal-body {
-  overflow-y: visible;
-  flex: none;
-}
-
-/* Read modal: body scroll jika isi panjang */
-#readModal .modal-body {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
 }
-/* Note modal: body scroll jika keyboard muncul */
-#noteModal .modal-body {
+
+/* ===== EDIT MODAL — layout kaku, scroll HANYA di kolom isi ===== */
+.modal-edit-box {
+  /* Modal tidak perlu overflow:hidden — kita kendalikan sendiri */
+  max-height: 92vh;
+}
+
+/* Body edit modal: tidak overflow, tidak scroll — semua terkunci */
+.modal-edit-body {
+  overflow: hidden !important;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 20px 20px;
+  /* Tinggi sisa setelah header */
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
 }
 
 /* ===== READ MODAL ===== */
@@ -402,14 +389,6 @@ body {
 .read-author-option { margin-left:auto; font-size:18px; color:var(--text3); cursor:pointer; padding:4px 0 4px 12px; line-height:1; }
 .read-author-option:active { opacity:0.5; }
 
-/*
-  READ MODAL — modal-body tetap scroll normal (menyesuaikan isi).
-  read-body punya scroll sendiri hanya saat konten terlalu panjang.
-*/
-#readModal .modal-body {
-  overflow-y: auto;
-}
-
 .modal-read .read-body {
   font-family: var(--ff-serif);
   font-size: 16px;
@@ -420,7 +399,6 @@ body {
   background: var(--input-bg);
   border-radius: 12px;
   padding: 14px;
-  /* Tumbuh mengisi ruang, dan bisa scroll sendiri */
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -429,7 +407,7 @@ body {
 }
 .modal-read .read-ts { font-family:var(--ff-sys); font-size:11px; color:var(--text3); flex-shrink:0; }
 
-/* ===== EDIT MODAL — menyerupai Read Modal ===== */
+/* ===== EDIT MODAL FIELDS ===== */
 .edit-author-row {
   display: flex; align-items: center; gap: 7px;
   font-family: var(--ff-sys); font-size: 12px; color: var(--text3); font-weight: 500;
@@ -437,6 +415,7 @@ body {
 }
 .edit-author-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; display:inline-block; }
 
+/* Judul — auto-resize, tidak scroll */
 .edit-title-wrap {
   background: var(--input-bg);
   border-radius: 12px;
@@ -451,38 +430,49 @@ body {
   background: transparent; border: none; outline: none;
   font-family: var(--ff-serif); font-size: 17px; font-weight: 600;
   color: var(--text); line-height: 1.4;
-  resize: none; padding: 0; overflow: hidden;
+  resize: none; padding: 0;
+  overflow: hidden; /* auto-resize, tidak scroll */
 }
 .edit-title-field::placeholder { color: var(--text3); font-weight: 400; }
 
+/* Kolom isi — scroll di DALAM kolom saja */
 .edit-body-wrap {
   background: var(--input-bg);
   border-radius: 12px;
-  padding: 14px;
   border: 1.5px solid transparent;
   transition: border-color 0.18s;
-  /* Tidak flex:1 — biarkan tinggi mengikuti konten */
+  /* Ambil sisa ruang di modal-body */
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 .edit-body-wrap:focus-within { border-color: var(--accent); }
+
 .edit-body-field {
+  flex: 1;
   width: 100%;
   background: transparent; border: none; outline: none;
   font-family: var(--ff-serif); font-size: 16px; color: var(--text);
-  line-height: 1.8; resize: none; padding: 0;
-  display: block;
-  min-height: 120px;   /* tinggi minimum nyaman */
-  /* tidak overflow scroll — biarkan auto-resize JS menangani */
-  overflow: hidden;
+  line-height: 1.8;
+  resize: none; padding: 14px;
+  /* Scroll terjadi di DALAM kolom ini, bukan di luar */
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 .edit-body-field::placeholder { color: var(--text3); }
 
-/* ===== INPUTS (noteModal / addNote) ===== */
+/* Tombol simpan — tidak mengecil */
+.btn-act { background:var(--accent); color:white; border:none; border-radius:13px; padding:13px; font-family:var(--ff-sys); font-size:15px; font-weight:600; cursor:pointer; transition:all 0.18s; box-shadow:0 2px 10px var(--accent-glow); flex-shrink:0; }
+.btn-act:active { transform:scale(0.97); opacity:0.9; }
+
+/* ===== INPUTS (noteModal) ===== */
 .field { background:var(--input-bg); border:1px solid var(--separator); border-radius:12px; padding:11px 14px; font-family:var(--ff-sys); font-size:15px; color:var(--text); outline:none; transition:border 0.18s; width:100%; resize:none; }
 .field::placeholder { color:var(--text3); }
 .field:focus { border-color:var(--accent); }
 .field-ta { min-height:90px; }
-.btn-act { background:var(--accent); color:white; border:none; border-radius:13px; padding:13px; font-family:var(--ff-sys); font-size:15px; font-weight:600; cursor:pointer; transition:all 0.18s; box-shadow:0 2px 10px var(--accent-glow); flex-shrink:0; }
-.btn-act:active { transform:scale(0.97); opacity:0.9; }
 
 /* ===== TOAST ===== */
 .toast { position:fixed; bottom:calc(var(--nav-h)+14px); left:50%; transform:translateX(-50%) translateY(12px); background:rgba(28,28,30,0.92); color:white; padding:9px 18px; border-radius:20px; font-family:var(--ff-sys); font-size:13px; font-weight:500; opacity:0; transition:all 0.28s cubic-bezier(0.34,1.56,0.64,1); pointer-events:none; backdrop-filter:blur(16px); white-space:nowrap; z-index:999; }
