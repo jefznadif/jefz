@@ -361,24 +361,58 @@ body {
   min-height: 0;
 }
 
-/* ===== EDIT MODAL — tinggi ikut isi, scroll di body saat overflow ===== */
-.modal-edit-box {
-  /* Tidak stretch — ikut konten, maksimum 92vh */
-  height: auto;
-  max-height: 92vh;
+/* ===== EDIT MODAL — keyboard-aware, hanya kolom teks yang scroll ===== */
+
+/* Overlay edit modal: align ke bawah seperti modal lain */
+#editModal {
+  align-items: flex-end;
+}
+@media (min-width: 520px) {
+  #editModal { align-items: center; }
 }
 
-/* Body edit: scroll jika konten melebihi ruang (misal keyboard aktif) */
-.modal-edit-body {
+/* Box: layout flex kolom, tinggi dikendalikan JS via --edit-modal-h */
+.modal-edit-box {
+  display: flex;
+  flex-direction: column;
+  /* Tinggi default sebelum keyboard: auto tapi max 88vh */
+  height: auto;
+  max-height: 88vh;
+  /* Tidak boleh overflow keluar box */
+  overflow: hidden;
+}
+
+/* Sticky top: author + judul — tidak pernah scroll */
+.edit-sticky-top {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 20px 10px;
+  border-bottom: 1px solid var(--separator);
+  background: var(--bg2);
+}
+
+/* Scroll area: hanya kolom teks yang bisa scroll */
+.edit-scroll-area {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px 20px 20px;
-  /* Tidak flex:1 — tinggi ikut isi */
-  flex: none;
+  padding: 12px 20px;
+}
+
+/* Footer: tombol simpan — tidak pernah scroll */
+.edit-footer {
+  flex-shrink: 0;
+  padding: 12px 20px 20px;
+  background: var(--bg2);
+  border-top: 1px solid var(--separator);
+}
+.btn-act-full {
+  width: 100%;
+  display: block;
 }
 
 /* ===== READ MODAL ===== */
@@ -437,26 +471,25 @@ body {
 }
 .edit-title-field::placeholder { color: var(--text3); font-weight: 400; }
 
-/* Kolom isi — auto-resize mengikuti teks, tidak fixed height */
+/* Kolom isi — mengisi scroll area, teks bisa diketik bebas */
 .edit-body-wrap {
   background: var(--input-bg);
   border-radius: 12px;
   border: 1.5px solid transparent;
   transition: border-color 0.18s;
-  /* Tidak flex:1 — ikut tinggi textarea */
-  flex-shrink: 0;
+  min-height: 140px;
 }
 .edit-body-wrap:focus-within { border-color: var(--accent); }
 
 .edit-body-field {
   width: 100%;
+  min-height: 140px;
   background: transparent; border: none; outline: none;
   font-family: var(--ff-serif); font-size: 16px; color: var(--text);
   line-height: 1.8;
   resize: none; padding: 14px;
-  /* Auto-resize via JS — tidak ada scroll di sini */
+  /* Auto-resize via JS supaya kolom tumbuh bersama teks */
   overflow: hidden;
-  min-height: 120px;
   display: block;
 }
 .edit-body-field::placeholder { color: var(--text3); }
