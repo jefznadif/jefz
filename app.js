@@ -22,6 +22,9 @@ let chatLoaded = false;
 let seenMsgIds = new Set();
 let pollTimer = null;
 
+// Countdown
+let countdownTimer = null;
+
 // ========== ANIMATED ORB BACKGROUND ==========
 (function initOrbBg() {
   const bg = document.getElementById('globalBg');
@@ -118,6 +121,61 @@ let pollTimer = null;
   requestAnimationFrame(tick);
 })();
 
+// ========== COUNTDOWN ==========
+function startCountdown() {
+  if (countdownTimer) clearInterval(countdownTimer);
+
+  var targetDate = new Date("2024-03-18T00:00:00");
+  targetDate.setFullYear(targetDate.getFullYear() + 3);
+
+  function tick() {
+    var now = new Date();
+    var isCountdown = now < targetDate;
+    var from = isCountdown ? now : targetDate;
+    var to   = isCountdown ? targetDate : now;
+
+    var years   = to.getFullYear() - from.getFullYear();
+    var months  = to.getMonth()    - from.getMonth();
+    var days    = to.getDate()     - from.getDate();
+    var hours   = to.getHours()    - from.getHours();
+    var minutes = to.getMinutes()  - from.getMinutes();
+    var seconds = to.getSeconds()  - from.getSeconds();
+
+    if (seconds < 0) { seconds += 60; minutes--; }
+    if (minutes < 0) { minutes += 60; hours--; }
+    if (hours   < 0) { hours   += 24; days--; }
+    if (days    < 0) {
+      var lastMonth = new Date(to.getFullYear(), to.getMonth(), 0);
+      days   += lastMonth.getDate();
+      months--;
+    }
+    if (months  < 0) { months  += 12; years--; }
+
+    var prefix = isCountdown ? "" : "- ";
+
+    var labelEl = document.getElementById('countdownLabel');
+    var valEl   = document.getElementById('countdown');
+    if (!labelEl || !valEl) return;
+
+    labelEl.textContent = isCountdown ? "Menuju 18 Maret 2027 ♡" : "Sudah bersama selama ♡";
+    valEl.textContent =
+      prefix +
+      years   + " Tahun " +
+      months  + " Bulan " +
+      days    + " Hari " +
+      hours   + " Jam " +
+      minutes + " Menit " +
+      seconds + " Detik";
+  }
+
+  tick();
+  countdownTimer = setInterval(tick, 1000);
+}
+
+function stopCountdown() {
+  if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+}
+
 // ========== KEYBOARD AWARE MODAL ==========
 function getVisibleHeight() {
   if (window.visualViewport) return window.visualViewport.height;
@@ -127,11 +185,9 @@ function getVisibleHeight() {
 function adjustOpenModals() {
   var vh = getVisibleHeight();
   var maxH = Math.floor(vh * 0.92);
-  // Modal biasa saja (bukan edit modal)
   document.querySelectorAll('.modal-overlay.show:not(#editModal) .modal-box').forEach(function(box) {
     box.style.maxHeight = maxH + 'px';
   });
-  // Edit modal pakai fungsi khusus
   if (document.getElementById('editModal').classList.contains('show')) {
     _adjustEditModal();
   }
@@ -144,19 +200,15 @@ function _adjustEditModal() {
 
   var vp = window.visualViewport;
   if (vp) {
-    // Tinggi ruang yang tersisa di atas keyboard
     var availH = vp.height;
-    // Set overlay persis di area visible viewport (otomatis di atas keyboard)
     overlay.style.position = 'fixed';
     overlay.style.top      = vp.offsetTop + 'px';
     overlay.style.left     = vp.offsetLeft + 'px';
     overlay.style.width    = vp.width + 'px';
     overlay.style.height   = availH + 'px';
     overlay.style.bottom   = 'auto';
-    // Batasi tinggi box supaya pas dalam ruang tersedia
     box.style.maxHeight = Math.floor(availH * 0.94) + 'px';
   } else {
-    // Fallback: pakai innerHeight
     overlay.style.top    = '0';
     overlay.style.height = window.innerHeight + 'px';
     box.style.maxHeight  = Math.floor(window.innerHeight * 0.92) + 'px';
@@ -177,7 +229,6 @@ function _resetEditModalOverlay() {
   if (box) box.style.maxHeight = '';
 }
 
-// Dengarkan perubahan viewport (keyboard naik/turun)
 if (window.visualViewport) {
   window.visualViewport.addEventListener('resize', function() {
     if (document.getElementById('editModal').classList.contains('show')) {
@@ -195,7 +246,6 @@ if (window.visualViewport) {
   window.addEventListener('resize', adjustOpenModals);
 }
 
-// iOS butuh delay ~300ms setelah keyboard muncul
 document.addEventListener('focusin', function(e) {
   var tag = e.target.tagName;
   if (tag !== 'INPUT' && tag !== 'TEXTAREA') return;
@@ -311,6 +361,7 @@ function doLogin() {
 function doLogout() {
   if (!confirm('Yakin mau logout?')) return;
   stopChatSync();
+  stopCountdown();
   sessionStorage.clear();
   currentAccount = null;
   pendingAccount = null;
@@ -339,8 +390,11 @@ function showDash() {
   avatarEl.style.background = currentAccount.color;
   document.getElementById('topbarUser').textContent =
     currentAccount.name + (currentAccount.role === 'admin' ? ' 👑' : ' 👤');
-  var ul = document.getElementById('uploadLabel');
-  if (ul) ul.style.display = currentAccount.role === 'admin' ? 'inline-block' : 'none';
+
+  // Gallery upload FAB: hanya admin yang bisa upload
+  var galleryFab = document.querySelector('.gallery-fab-wrap');
+  if (galleryFab) galleryFab.style.display = currentAccount.role === 'admin' ? 'block' : 'none';
+
   var lastTab = sessionStorage.getItem('activeTab') || 'Chat';
   activateTab(lastTab);
 }
@@ -370,6 +424,13 @@ function activateTab(name) {
     isChatActive = true;
   }
 
+  // Countdown: jalan hanya saat di tab Notes
+  if (name === 'Notes') {
+    startCountdown();
+  } else {
+    stopCountdown();
+  }
+
   if (name === 'Chat') initChat();
   if (name === 'Notes') loadNotes();
   if (name === 'Gallery') loadGallery();
@@ -397,7 +458,6 @@ function scrollBottom(el, smooth) {
   });
 }
 
-// Auto-resize textarea (hanya untuk judul edit & noteModal body)
 function autoResize(el) {
   el.style.height = 'auto';
   el.style.height = el.scrollHeight + 'px';
