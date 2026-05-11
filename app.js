@@ -27,112 +27,94 @@ let pollTimer = null;
   const bg = document.getElementById('globalBg');
   if (!bg) return;
 
-  // Palet warna orb — light & dark akan blend beda
+  // Palet warna orb — vivid supaya kelihatan menembus background
   const ORB_PALETTES = [
-    // pastel-pink → rose
-    ['#ff6eb4', '#ff3cac'],
-    // sky-blue → indigo
-    ['#5eaeff', '#007aff'],
-    // mint → teal
-    ['#34d399', '#06b6d4'],
-    // amber → orange
-    ['#fbbf24', '#f97316'],
-    // violet → purple
-    ['#a78bfa', '#7c3aed'],
-    // coral → red
-    ['#fb7185', '#e11d48'],
-    // lime → green
-    ['#a3e635', '#22c55e'],
-    // cyan → blue
-    ['#67e8f9', '#3b82f6'],
+    ['#ff6eb4', '#ff3cac'],   // pink → rose
+    ['#60aaff', '#007aff'],   // sky → blue
+    ['#34d399', '#06b6d4'],   // mint → teal
+    ['#fbbf24', '#f97316'],   // amber → orange
+    ['#c084fc', '#8b5cf6'],   // violet → purple
+    ['#fb7185', '#f43f5e'],   // coral → red
+    ['#86efac', '#22c55e'],   // lime → green
+    ['#67e8f9', '#38bdf8'],   // cyan → sky
   ];
 
-  // Jumlah orb
   const NUM_ORBS = 8;
   const orbs = [];
 
-  // Buat orb
   for (let i = 0; i < NUM_ORBS; i++) {
     const el = document.createElement('div');
     el.className = 'g-orb';
     bg.appendChild(el);
 
     const palette = ORB_PALETTES[i % ORB_PALETTES.length];
-    const size = 200 + Math.random() * 350;  // px, 200–550
-    const blur = size * 0.55;                 // blur proporsional
+    // Ukuran lebih kecil agar blur tidak membunuh warna
+    const size = 160 + Math.random() * 220;   // 160–380px
+    const blur = size * 0.28;                  // blur ~28% dari ukuran
 
     el.style.width  = size + 'px';
     el.style.height = size + 'px';
     el.style.filter = `blur(${blur}px)`;
-    el.style.background = `radial-gradient(circle, ${palette[0]}, ${palette[1]})`;
+    el.style.background = `radial-gradient(circle at 40% 40%, ${palette[0]}, ${palette[1]})`;
 
-    // Posisi awal random
-    const startX = Math.random() * 100;  // vw %
-    const startY = Math.random() * 100;  // vh %
-    el.style.left = startX + 'vw';
-    el.style.top  = startY + 'vh';
+    const startX = Math.random() * 100;
+    const startY = Math.random() * 100;
+    el.style.left      = startX + 'vw';
+    el.style.top       = startY + 'vh';
     el.style.transform = 'translate(-50%, -50%)';
 
-    // opacity random rendah biar tidak terlalu mencolok
-    const baseOpacity = 0.18 + Math.random() * 0.22;  // 0.18–0.40
+    // Opacity lebih tinggi supaya kelihatan
+    const baseOpacity = 0.30 + Math.random() * 0.25;  // 0.30–0.55
     el.style.opacity = baseOpacity;
 
     orbs.push({
       el,
       x: startX,
       y: startY,
-      // kecepatan (vw/vh per detik)
-      vx: (Math.random() - 0.5) * 0.06,
-      vy: (Math.random() - 0.5) * 0.06,
-      // skala napas (pulse)
+      vx: (Math.random() - 0.5) * 0.05,
+      vy: (Math.random() - 0.5) * 0.05,
       scaleBase: 1,
-      scaleAmp:  0.08 + Math.random() * 0.12,
+      scaleAmp:  0.07 + Math.random() * 0.10,
       scaleFreq: 0.0004 + Math.random() * 0.0003,
-      // opacity pulse
-      opBase: baseOpacity,
-      opAmp:  0.06 + Math.random() * 0.08,
-      opFreq: 0.0003 + Math.random() * 0.0003,
-      phase: Math.random() * Math.PI * 2,
+      opBase:    baseOpacity,
+      opAmp:     0.05 + Math.random() * 0.07,
+      opFreq:    0.0003 + Math.random() * 0.0003,
+      phase:     Math.random() * Math.PI * 2,
     });
   }
 
   let lastTime = performance.now();
 
   function tick(now) {
-    const dt = now - lastTime;
+    const dt = Math.min(now - lastTime, 50); // clamp agar tidak lompat
     lastTime = now;
 
     for (const orb of orbs) {
-      // Gerak
       orb.x += orb.vx * dt * 0.016;
       orb.y += orb.vy * dt * 0.016;
 
-      // Pantulan di batas layar dengan kelembutan
-      if (orb.x < -10) { orb.x = -10; orb.vx = Math.abs(orb.vx) * (0.6 + Math.random() * 0.4); }
-      if (orb.x > 110)  { orb.x = 110; orb.vx = -Math.abs(orb.vx) * (0.6 + Math.random() * 0.4); }
-      if (orb.y < -10) { orb.y = -10; orb.vy = Math.abs(orb.vy) * (0.6 + Math.random() * 0.4); }
-      if (orb.y > 110)  { orb.y = 110; orb.vy = -Math.abs(orb.vy) * (0.6 + Math.random() * 0.4); }
+      // Pantulan lembut
+      if (orb.x < -5)  { orb.x = -5;  orb.vx =  Math.abs(orb.vx) * (0.7 + Math.random() * 0.3); }
+      if (orb.x > 105) { orb.x = 105; orb.vx = -Math.abs(orb.vx) * (0.7 + Math.random() * 0.3); }
+      if (orb.y < -5)  { orb.y = -5;  orb.vy =  Math.abs(orb.vy) * (0.7 + Math.random() * 0.3); }
+      if (orb.y > 105) { orb.y = 105; orb.vy = -Math.abs(orb.vy) * (0.7 + Math.random() * 0.3); }
 
-      // Sesekali ubah arah secara halus
+      // Sesekali geser arah
       if (Math.random() < 0.003) {
-        orb.vx += (Math.random() - 0.5) * 0.02;
-        orb.vy += (Math.random() - 0.5) * 0.02;
-        // Batasi kecepatan maksimum
+        orb.vx += (Math.random() - 0.5) * 0.015;
+        orb.vy += (Math.random() - 0.5) * 0.015;
         const spd = Math.hypot(orb.vx, orb.vy);
-        if (spd > 0.12) { orb.vx *= 0.12 / spd; orb.vy *= 0.12 / spd; }
+        if (spd > 0.09) { orb.vx *= 0.09 / spd; orb.vy *= 0.09 / spd; }
       }
 
-      // Pulse scale
       const t = now * orb.scaleFreq + orb.phase;
       const scale = orb.scaleBase + Math.sin(t) * orb.scaleAmp;
-
-      // Opacity pulse
-      const op = orb.opBase + Math.sin(now * orb.opFreq + orb.phase + 1) * orb.opAmp;
+      const op    = orb.opBase   + Math.sin(now * orb.opFreq + orb.phase + 1) * orb.opAmp;
 
       orb.el.style.left      = orb.x + 'vw';
       orb.el.style.top       = orb.y + 'vh';
       orb.el.style.transform = `translate(-50%, -50%) scale(${scale})`;
-      orb.el.style.opacity   = Math.max(0.05, Math.min(0.65, op));
+      orb.el.style.opacity   = Math.max(0.1, Math.min(0.7, op));
     }
 
     requestAnimationFrame(tick);
@@ -142,46 +124,40 @@ let pollTimer = null;
 })();
 
 // ========== KEYBOARD AWARE MODAL ==========
-// Deteksi perubahan tinggi viewport (keyboard muncul/hilang) dan sesuaikan max-height modal
-(function initKeyboardAware() {
-  // Hanya berlaku pada touch device / mobile
-  const isMobile = () => window.innerWidth < 520;
+function getVisibleHeight() {
+  if (window.visualViewport) return window.visualViewport.height;
+  return window.innerHeight;
+}
 
-  function adjustModals() {
-    if (!isMobile()) return;
-    // Viewport height saat ini (setelah keyboard muncul akan mengecil)
-    const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-    // Max height modal = 92% dari visible viewport
-    const maxH = Math.floor(vh * 0.92);
+function adjustOpenModals() {
+  var vh = getVisibleHeight();
+  var maxH = Math.floor(vh * 0.92);
+  document.querySelectorAll('.modal-overlay.show .modal-box').forEach(function(box) {
+    box.style.maxHeight = maxH + 'px';
+  });
+}
 
-    document.querySelectorAll('.modal-overlay.show .modal-box').forEach(function(box) {
-      box.style.maxHeight = maxH + 'px';
-    });
-  }
+// Dengarkan resize viewport (keyboard naik/turun)
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', adjustOpenModals);
+} else {
+  window.addEventListener('resize', adjustOpenModals);
+}
 
-  // Pakai visualViewport API jika tersedia (lebih akurat di iOS/Android)
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', adjustModals);
-    window.visualViewport.addEventListener('scroll', adjustModals);
-  } else {
-    window.addEventListener('resize', adjustModals);
-  }
-
-  // Observer: jalankan adjustModals setiap kali ada modal yang dibuka
-  const observer = new MutationObserver(function(mutations) {
-    for (const m of mutations) {
-      if (m.type === 'attributes' && m.attributeName === 'class') {
-        if (m.target.classList.contains('show')) {
-          // Tunda sedikit biar keyboard sempat muncul
-          setTimeout(adjustModals, 80);
-        }
-      }
+// Keyboard muncul butuh waktu ~300ms di iOS — trigger ulang adjust setelah delay
+document.addEventListener('focusin', function(e) {
+  var tag = e.target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') {
+    // Cek apakah ada modal yang terbuka
+    if (document.querySelector('.modal-overlay.show')) {
+      setTimeout(adjustOpenModals, 350);
     }
-  });
-  document.querySelectorAll('.modal-overlay').forEach(function(el) {
-    observer.observe(el, { attributes: true });
-  });
-})();
+  }
+});
+document.addEventListener('focusout', function() {
+  // Keyboard tutup — kembalikan ukuran modal
+  setTimeout(adjustOpenModals, 200);
+});
 
 // ========== BOOT ==========
 window.onload = function () {
@@ -202,6 +178,9 @@ window.onload = function () {
 // ========== THEME ==========
 function applyTheme() {
   document.body.classList.toggle('dark', dark);
+  // Sync ke #globalBg supaya background warna berubah sesuai tema
+  var gbg = document.getElementById('globalBg');
+  if (gbg) gbg.classList.toggle('dark', dark);
   var icon = document.getElementById('themeBtnIcon');
   var label = document.getElementById('themeBtnLabel');
   if (icon) icon.textContent = dark ? '☀️' : '🌙';
@@ -625,7 +604,10 @@ function openNoteModal() {
   document.getElementById('noteTitleInput').value = '';
   document.getElementById('noteBodyInput').value = '';
   document.getElementById('noteModal').classList.add('show');
-  setTimeout(function() { document.getElementById('noteTitleInput').focus(); }, 120);
+  setTimeout(function() {
+    document.getElementById('noteTitleInput').focus();
+    adjustOpenModals();
+  }, 120);
 }
 function closeNoteModal(e) {
   if (e && e.target !== document.getElementById('noteModal')) return;
@@ -655,9 +637,11 @@ function openEditModal(id) {
 
   var titleEl = document.getElementById('editTitleInput');
   titleEl.value = n.title || '';
+  titleEl.oninput = function() { autoResize(this); };
 
   var bodyEl = document.getElementById('editBodyInput');
   bodyEl.value = n.content || '';
+  bodyEl.oninput = function() { autoResize(this); };
 
   document.getElementById('editNoteId').value = id;
 
@@ -666,6 +650,7 @@ function openEditModal(id) {
   setTimeout(function() {
     autoResize(titleEl);
     autoResize(bodyEl);
+    adjustOpenModals();
     titleEl.focus();
   }, 80);
 }
