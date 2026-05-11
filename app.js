@@ -25,7 +25,11 @@ let pollTimer = null;
 // Countdown
 let countdownTimer = null;
 
-// ========== ANIMATED ORB BACKGROUND ==========
+// Cache flags — hanya load sekali per sesi, bukan realtime
+let notesLoaded = false;
+let galleryLoaded = false;
+
+// ========== ANIMATED ORB BACKGROUND (lebih cepat) ==========
 (function initOrbBg() {
   const bg = document.getElementById('globalBg');
   if (!bg) return;
@@ -53,32 +57,30 @@ let countdownTimer = null;
     const size = 160 + Math.random() * 220;
     const blur = size * 0.28;
 
-    el.style.width  = size + 'px';
-    el.style.height = size + 'px';
-    el.style.filter = `blur(${blur}px)`;
-    el.style.background = `radial-gradient(circle at 40% 40%, ${palette[0]}, ${palette[1]})`;
+    el.style.cssText = [
+      'width:' + size + 'px',
+      'height:' + size + 'px',
+      'filter:blur(' + blur + 'px)',
+      'background:radial-gradient(circle at 40% 40%,' + palette[0] + ',' + palette[1] + ')',
+      'will-change:transform,opacity',
+    ].join(';');
 
     const startX = Math.random() * 100;
     const startY = Math.random() * 100;
-    el.style.left      = startX + 'vw';
-    el.style.top       = startY + 'vh';
-    el.style.transform = 'translate(-50%, -50%)';
-
-    const baseOpacity = 0.30 + Math.random() * 0.25;
-    el.style.opacity = baseOpacity;
+    const baseOpacity = 0.38 + Math.random() * 0.28;
 
     orbs.push({
       el,
-      x: startX,
-      y: startY,
-      vx: (Math.random() - 0.5) * 0.05,
-      vy: (Math.random() - 0.5) * 0.05,
+      x: startX, y: startY,
+      // Kecepatan 3x lebih cepat dari sebelumnya
+      vx: (Math.random() - 0.5) * 0.16,
+      vy: (Math.random() - 0.5) * 0.16,
       scaleBase: 1,
-      scaleAmp:  0.07 + Math.random() * 0.10,
-      scaleFreq: 0.0004 + Math.random() * 0.0003,
+      scaleAmp:  0.10 + Math.random() * 0.12,
+      scaleFreq: 0.0012 + Math.random() * 0.0010, // lebih cepat
       opBase:    baseOpacity,
-      opAmp:     0.05 + Math.random() * 0.07,
-      opFreq:    0.0003 + Math.random() * 0.0003,
+      opAmp:     0.08 + Math.random() * 0.10,
+      opFreq:    0.0010 + Math.random() * 0.0008, // lebih cepat
       phase:     Math.random() * Math.PI * 2,
     });
   }
@@ -98,11 +100,11 @@ let countdownTimer = null;
       if (orb.y < -5)  { orb.y = -5;  orb.vy =  Math.abs(orb.vy) * (0.7 + Math.random() * 0.3); }
       if (orb.y > 105) { orb.y = 105; orb.vy = -Math.abs(orb.vy) * (0.7 + Math.random() * 0.3); }
 
-      if (Math.random() < 0.003) {
-        orb.vx += (Math.random() - 0.5) * 0.015;
-        orb.vy += (Math.random() - 0.5) * 0.015;
+      if (Math.random() < 0.005) {
+        orb.vx += (Math.random() - 0.5) * 0.04;
+        orb.vy += (Math.random() - 0.5) * 0.04;
         const spd = Math.hypot(orb.vx, orb.vy);
-        if (spd > 0.09) { orb.vx *= 0.09 / spd; orb.vy *= 0.09 / spd; }
+        if (spd > 0.20) { orb.vx *= 0.20 / spd; orb.vy *= 0.20 / spd; }
       }
 
       const t = now * orb.scaleFreq + orb.phase;
@@ -111,8 +113,8 @@ let countdownTimer = null;
 
       orb.el.style.left      = orb.x + 'vw';
       orb.el.style.top       = orb.y + 'vh';
-      orb.el.style.transform = `translate(-50%, -50%) scale(${scale})`;
-      orb.el.style.opacity   = Math.max(0.1, Math.min(0.7, op));
+      orb.el.style.transform = 'translate(-50%,-50%) scale(' + scale + ')';
+      orb.el.style.opacity   = Math.max(0.12, Math.min(0.75, op));
     }
 
     requestAnimationFrame(tick);
@@ -309,6 +311,33 @@ function toast(msg, ok) {
   toastTimer = setTimeout(function () { el.className = 'toast'; }, 2800);
 }
 
+// ========== UPLOAD PROGRESS TOAST ==========
+function showUploadProgress(percent, speedStr, remainStr) {
+  var el = document.getElementById('toast');
+  el.className = 'toast show upload-progress';
+  el.innerHTML =
+    '<div style="display:flex;flex-direction:column;gap:3px;min-width:180px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px">' +
+        '<span>Mengupload...</span>' +
+        '<span style="font-weight:700">' + percent + '%</span>' +
+      '</div>' +
+      '<div style="background:rgba(255,255,255,0.25);border-radius:4px;height:4px;overflow:hidden">' +
+        '<div style="background:white;height:100%;width:' + percent + '%;transition:width 0.2s;border-radius:4px"></div>' +
+      '</div>' +
+      '<div style="display:flex;justify-content:space-between;font-size:11px;opacity:0.85">' +
+        '<span>' + speedStr + '</span>' +
+        '<span>' + remainStr + '</span>' +
+      '</div>' +
+    '</div>';
+  clearTimeout(toastTimer);
+}
+
+function hideUploadProgress() {
+  var el = document.getElementById('toast');
+  el.className = 'toast';
+  el.innerHTML = '';
+}
+
 // ========== LOGIN ==========
 var pendingAccount = null;
 
@@ -350,6 +379,9 @@ function doLogin() {
     sessionStorage.setItem('accRole', currentAccount.role);
     sessionStorage.setItem('activeTab', 'Chat');
     document.getElementById('pinInput').value = '';
+    // Reset cache saat login baru
+    notesLoaded = false;
+    galleryLoaded = false;
     showDash();
   } else {
     errEl.textContent = 'PIN salah, coba lagi';
@@ -366,6 +398,8 @@ function doLogout() {
   currentAccount = null;
   pendingAccount = null;
   chatLoaded = false;
+  notesLoaded = false;
+  galleryLoaded = false;
   seenMsgIds.clear();
   document.getElementById('stepPin').style.display = 'none';
   document.getElementById('stepAccount').style.display = 'block';
@@ -432,8 +466,9 @@ function activateTab(name) {
   }
 
   if (name === 'Chat') initChat();
-  if (name === 'Notes') loadNotes();
-  if (name === 'Gallery') loadGallery();
+  // Notes & Gallery: hanya load jika belum pernah load (tidak realtime)
+  if (name === 'Notes' && !notesLoaded) loadNotes();
+  if (name === 'Gallery' && !galleryLoaded) loadGallery();
 }
 
 // ========== HELPERS ==========
@@ -461,6 +496,12 @@ function scrollBottom(el, smooth) {
 function autoResize(el) {
   el.style.height = 'auto';
   el.style.height = el.scrollHeight + 'px';
+}
+
+function fmtBytes(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
 }
 
 // ========== NOTES ==========
@@ -531,10 +572,16 @@ async function loadNotes() {
   el.innerHTML = '<p class="state-msg">Memuat...</p>';
   var res = await sb.from('notes').select('*').order('created_at', { ascending: true });
   if (res.error) { el.innerHTML = '<p class="state-msg err">Error: ' + res.error.message + '</p>'; return; }
+
+  notesLoaded = true; // tandai sudah di-load
+
   if (!res.data || !res.data.length) { el.innerHTML = '<p class="state-msg">Belum ada catatan.</p>'; return; }
 
   el.innerHTML = '';
   notesCache = {};
+
+  // Gunakan DocumentFragment biar tidak reflow berkali-kali
+  var frag = document.createDocumentFragment();
 
   res.data.forEach(function(n) {
     notesCache[n.id] = n;
@@ -606,12 +653,10 @@ async function loadNotes() {
     });
 
     d.appendChild(summary);
-    el.appendChild(d);
+    frag.appendChild(d);
   });
 
-  setTimeout(function() {
-    el.scrollTop = el.scrollHeight;
-  }, 60);
+  el.appendChild(frag);
 }
 
 function openReadModal(id) {
@@ -738,6 +783,8 @@ async function addNote() {
   if (res.error) { toast('Gagal: ' + res.error.message, false); return; }
   document.getElementById('noteModal').classList.remove('show');
   toast('Catatan ditambahkan ✓');
+  // Setelah tambah catatan baru: reload paksa
+  notesLoaded = false;
   loadNotes();
 }
 
@@ -790,6 +837,8 @@ async function saveEditNote() {
   if (res.error) { toast('Gagal edit: ' + res.error.message, false); return; }
   closeEditModal();
   toast('Catatan diperbarui ✓');
+  // Reload notes setelah edit
+  notesLoaded = false;
   loadNotes();
 }
 
@@ -798,6 +847,8 @@ async function delNote(id) {
   var res = await sb.from('notes').delete().eq('id', id);
   if (res.error) { toast('Gagal hapus', false); return; }
   toast('Dihapus');
+  // Reload notes setelah hapus
+  notesLoaded = false;
   loadNotes();
 }
 
@@ -848,10 +899,13 @@ async function initChat() {
   if (!res.data || !res.data.length) {
     el.innerHTML = '<p class="state-msg">Belum ada pesan. Mulai chat!</p>';
   } else {
+    // Gunakan DocumentFragment untuk performa
+    var frag = document.createDocumentFragment();
     res.data.forEach(function(m) {
       if (m.id) seenMsgIds.add(String(m.id));
-      el.appendChild(buildMsgEl(m));
+      frag.appendChild(buildMsgEl(m));
     });
+    el.appendChild(frag);
     scrollBottom(el, false);
   }
 
@@ -884,6 +938,7 @@ function startChatSync() {
   )
   .subscribe();
 
+  // Poll sebagai fallback realtime
   pollTimer = setInterval(async function() {
     if (!isChatActive || !chatLoaded) return;
     var res = await sb.from('chat_messages')
@@ -955,37 +1010,148 @@ async function loadGallery() {
   el.innerHTML = '<p class="state-msg">Memuat...</p>';
   var res = await sb.from('gallery').select('*').order('created_at', { ascending: false });
   if (res.error) { el.innerHTML = '<p class="state-msg err">Error: ' + res.error.message + '</p>'; return; }
+
+  galleryLoaded = true; // tandai sudah di-load
+
   if (!res.data || !res.data.length) { el.innerHTML = '<p class="state-msg">Belum ada media.</p>'; return; }
   el.innerHTML = '';
   var isAdmin = currentAccount && currentAccount.role === 'admin';
+
+  var frag = document.createDocumentFragment();
+
   res.data.forEach(function(f) {
     var isVid = /\.(mp4|webm|mov|avi)$/i.test(f.file_name || '');
     var d = document.createElement('div');
     d.className = 'g-item';
-    d.innerHTML = isVid
-      ? '<video src="' + esc(f.file_url) + '" class="g-media" controls></video>'
-      : '<img src="' + esc(f.file_url) + '" class="g-media" onclick="openLightbox(\'' + esc(f.file_url) + '\')" loading="lazy"/>';
-    if (isAdmin) {
-      d.innerHTML += '<button class="g-del" onclick="delMedia(\'' + f.id + '\',\'' + esc(f.file_name) + '\')">✕</button>';
+
+    if (isVid) {
+      // Tampilkan thumbnail video — gunakan poster dari frame pertama
+      // Video TIDAK autoplay, TIDAK preload (hanya metadata)
+      // Klik buka lightbox video
+      var thumb = document.createElement('div');
+      thumb.className = 'g-video-thumb';
+      thumb.innerHTML =
+        '<video class="g-media g-video-preview" preload="metadata" muted playsinline' +
+          ' src="' + esc(f.file_url) + '#t=0.001"' +
+          ' onclick="openVideoLightbox(\'' + esc(f.file_url) + '\')">' +
+        '</video>' +
+        '<div class="g-play-icon"><svg viewBox="0 0 24 24" fill="white" width="28" height="28"><circle cx="12" cy="12" r="12" fill="rgba(0,0,0,0.5)"/><polygon points="10,8 18,12 10,16" fill="white"/></svg></div>';
+      thumb.style.position = 'relative';
+      thumb.style.width = '100%';
+      thumb.style.height = '100%';
+      thumb.onclick = function() { openVideoLightbox(f.file_url); };
+      d.appendChild(thumb);
+    } else {
+      // Gambar: lazy load
+      var img = document.createElement('img');
+      img.src = f.file_url;
+      img.className = 'g-media';
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      img.onclick = function() { openLightbox(f.file_url); };
+      d.appendChild(img);
     }
-    el.appendChild(d);
+
+    if (isAdmin) {
+      var delBtn = document.createElement('button');
+      delBtn.className = 'g-del';
+      delBtn.textContent = '✕';
+      delBtn.onclick = function(e) {
+        e.stopPropagation();
+        delMedia(f.id, f.file_name);
+      };
+      d.appendChild(delBtn);
+    }
+
+    frag.appendChild(d);
   });
+
+  el.appendChild(frag);
 }
 
+// ========== UPLOAD DENGAN PROGRESS ==========
 async function doUpload(input) {
   if (!currentAccount || currentAccount.role !== 'admin') { toast('Hanya admin yang bisa upload', false); return; }
   var file = input.files[0];
   if (!file) return;
-  toast('Mengupload...');
+
   var ext = file.name.split('.').pop();
   var name = Date.now() + '_' + Math.random().toString(36).slice(2,6) + '.' + ext;
-  var upRes = await sb.storage.from('gallery').upload(name, file, { cacheControl: '3600', upsert: false });
-  if (upRes.error) { toast('Upload gagal: ' + upRes.error.message, false); input.value = ''; return; }
+  var totalBytes = file.size;
+
+  // Upload menggunakan XMLHttpRequest agar bisa track progress
+  var signed = null;
+  try {
+    // Dapatkan signed URL dari Supabase storage untuk upload langsung
+    // Supabase JS SDK tidak expose progress natively, jadi kita pakai XHR manual
+    var uploadUrl = SB_URL + '/storage/v1/object/gallery/' + name;
+    
+    var startTime = Date.now();
+    var lastLoaded = 0;
+    var lastTime = Date.now();
+
+    await new Promise(function(resolve, reject) {
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', uploadUrl, true);
+      xhr.setRequestHeader('Authorization', 'Bearer ' + SB_KEY);
+      xhr.setRequestHeader('x-upsert', 'false');
+      xhr.setRequestHeader('Cache-Control', '3600');
+
+      xhr.upload.onprogress = function(e) {
+        if (!e.lengthComputable) return;
+        var now = Date.now();
+        var loaded = e.loaded;
+        var total = e.total;
+        var percent = Math.round((loaded / total) * 100);
+
+        // Hitung kecepatan
+        var elapsed = (now - lastTime) / 1000;
+        var speedBytes = elapsed > 0 ? (loaded - lastLoaded) / elapsed : 0;
+        lastLoaded = loaded;
+        lastTime = now;
+
+        var speedStr = speedBytes > 0 ? fmtBytes(speedBytes) + '/s' : '—';
+        var remainBytes = total - loaded;
+        var remainStr = fmtBytes(remainBytes) + ' tersisa';
+
+        showUploadProgress(percent, speedStr, remainStr);
+      };
+
+      xhr.onload = function() {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(xhr.responseText);
+        } else {
+          reject(new Error('Upload failed: ' + xhr.status + ' ' + xhr.responseText));
+        }
+      };
+      xhr.onerror = function() { reject(new Error('Network error')); };
+
+      // Kirim sebagai binary (file langsung)
+      xhr.send(file);
+    });
+
+  } catch(err) {
+    hideUploadProgress();
+    toast('Upload gagal: ' + err.message, false);
+    input.value = '';
+    return;
+  }
+
+  // Dapatkan public URL
   var pub = sb.storage.from('gallery').getPublicUrl(name);
   var dbRes = await sb.from('gallery').insert([{ file_url: pub.data.publicUrl, file_name: name }]);
-  if (dbRes.error) { toast('Gagal simpan: ' + dbRes.error.message, false); input.value = ''; return; }
+  if (dbRes.error) {
+    hideUploadProgress();
+    toast('Gagal simpan: ' + dbRes.error.message, false);
+    input.value = '';
+    return;
+  }
+
+  hideUploadProgress();
   toast('Berhasil diupload ✓');
   input.value = '';
+  // Reload gallery setelah upload baru
+  galleryLoaded = false;
   loadGallery();
 }
 
@@ -996,6 +1162,8 @@ async function delMedia(id, name) {
   var res = await sb.from('gallery').delete().eq('id', id);
   if (res.error) { toast('Gagal hapus', false); return; }
   toast('Dihapus');
+  // Reload setelah hapus
+  galleryLoaded = false;
   loadGallery();
 }
 
@@ -1007,4 +1175,31 @@ function openLightbox(url) {
 function closeLightbox() {
   document.getElementById('lightbox').classList.remove('show');
   document.getElementById('lightboxImg').src = '';
+  // Juga hapus video lightbox jika ada
+  var vl = document.getElementById('lightboxVideo');
+  if (vl) { vl.pause(); vl.src = ''; vl.remove(); }
 }
+
+function openVideoLightbox(url) {
+  var lb = document.getElementById('lightbox');
+  // Sembunyikan img, tampilkan video
+  var img = document.getElementById('lightboxImg');
+  img.style.display = 'none';
+
+  var vl = document.getElementById('lightboxVideo');
+  if (!vl) {
+    vl = document.createElement('video');
+    vl.id = 'lightboxVideo';
+    vl.controls = true;
+    vl.style.cssText = 'max-width:94vw;max-height:88vh;border-radius:10px;object-fit:contain;';
+    lb.appendChild(vl);
+  }
+  vl.src = url;
+  vl.play();
+  lb.classList.add('show');
+}
+
+// Override closeLightbox agar restore img juga
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeLightbox();
+});
