@@ -130,6 +130,13 @@ function adjustOpenModals() {
   document.querySelectorAll('.modal-overlay.show .modal-box').forEach(function(box) {
     box.style.maxHeight = maxH + 'px';
   });
+  // Edit modal body juga perlu dibatasi supaya bisa scroll saat keyboard aktif
+  var editBody = document.querySelector('#editModal.show .modal-edit-body');
+  if (editBody) {
+    // Header ~62px, padding ~40px — sisanya untuk body
+    var headerH = 62;
+    editBody.style.maxHeight = (maxH - headerH) + 'px';
+  }
 }
 
 if (window.visualViewport) {
@@ -625,22 +632,22 @@ function openEditModal(id) {
     '<span class="edit-author-dot" style="background:' + authorColor + '"></span>' +
     esc(n.author || '');
 
-  // Judul: auto-resize (tidak scroll)
+  // Judul: auto-resize
   var titleEl = document.getElementById('editTitleInput');
   titleEl.value = n.title || '';
+  titleEl.oninput = function() { autoResize(this); };
 
-  // Isi: scroll di dalam kolom — tidak perlu autoResize
+  // Isi: auto-resize (tumbuh bersama konten)
   var bodyEl = document.getElementById('editBodyInput');
   bodyEl.value = n.content || '';
-  // Reset scroll ke atas
-  bodyEl.scrollTop = 0;
+  bodyEl.oninput = function() { autoResize(this); };
 
   document.getElementById('editNoteId').value = id;
   document.getElementById('editModal').classList.add('show');
 
   setTimeout(function() {
-    // Auto-resize hanya untuk judul
     autoResize(titleEl);
+    autoResize(bodyEl);
     adjustOpenModals();
     titleEl.focus();
   }, 80);
@@ -651,7 +658,9 @@ function closeEditModal(e) {
   document.getElementById('editModal').classList.remove('show');
 
   var titleEl = document.getElementById('editTitleInput');
+  var bodyEl = document.getElementById('editBodyInput');
   if (titleEl) titleEl.style.height = '';
+  if (bodyEl) bodyEl.style.height = '';
 }
 
 async function saveEditNote() {
