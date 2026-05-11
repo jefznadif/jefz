@@ -30,8 +30,10 @@ let replyTarget = null;
 // Emoji picker state
 let emojiPickerOpen = false;
 
-// Selection mode for long-press delete
-let selectedMsgId = null;
+// ========== MULTI-SELECT STATE ==========
+// selectedMsgIds: Set of string IDs currently selected
+let selectedMsgIds = new Set();
+// selectionModeActive: true setelah long-press pertama
 let selectionModeActive = false;
 
 // Upload state
@@ -291,56 +293,103 @@ function activateTab(name) {
   if (name==='Gallery'&&!galleryLoaded) loadGallery();
 }
 
-// ========== SELECTION MODE (Touch long-press delete) ==========
-function enterSelectionMode(msgId) {
-  if (selectionModeActive && selectedMsgId === msgId) return;
-  exitSelectionMode();
-  selectionModeActive = true;
-  selectedMsgId = msgId;
+// ========== MULTI-SELECT MODE ==========
 
+/**
+ * Masuk ke selection mode & tambah msgId ke set.
+ * Dipanggil saat long-press pertama kali.
+ */
+function enterSelectionMode(msgId) {
+  selectionModeActive = true;
+  _addToSelection(msgId);
+  _renderSelectionBar();
+}
+
+/**
+ * Toggle select/unselect sebuah bubble saat selection mode aktif.
+ * Dipanggil saat klik biasa (tanpa hold) pada bubble.
+ */
+function toggleMsgSelection(msgId) {
+  if (!selectionModeActive) return;
+  if (selectedMsgIds.has(msgId)) {
+    _removeFromSelection(msgId);
+  } else {
+    _addToSelection(msgId);
+  }
+  // Jika semua bubble sudah di-unselect → auto-cancel
+  if (selectedMsgIds.size === 0) {
+    exitSelectionMode();
+    return;
+  }
+  _renderSelectionBar();
+}
+
+function _addToSelection(msgId) {
+  selectedMsgIds.add(msgId);
   var row = document.querySelector('[data-msg-id="'+msgId+'"]');
   if (row) row.classList.add('msg-selected');
+}
 
+function _removeFromSelection(msgId) {
+  selectedMsgIds.delete(msgId);
+  var row = document.querySelector('[data-msg-id="'+msgId+'"]');
+  if (row) row.classList.remove('msg-selected');
+}
+
+function _renderSelectionBar() {
   var bar = document.getElementById('selectionBar');
   if (!bar) {
     bar = document.createElement('div');
     bar.id = 'selectionBar';
     bar.className = 'selection-bar';
-    bar.innerHTML =
-      '<button class="sel-cancel-btn" onclick="exitSelectionMode()">✕ Batal</button>' +
-      '<span class="sel-label">1 pesan dipilih</span>' +
-      '<button class="sel-delete-btn" onclick="delSelectedMsg()">🗑 Hapus</button>';
     document.querySelector('.topbar').appendChild(bar);
   }
-  bar.style.display = 'flex';
 
+  // Cek apakah user boleh hapus semua yg dipilih
   var isAdmin = currentAccount && currentAccount.role === 'admin';
-  var senderEl = row ? row.querySelector('.msg-sender') : null;
-  var senderName = senderEl ? senderEl.textContent.replace(' 👑','').trim() : '';
-  var isOwner = currentAccount && (senderName === currentAccount.name || (row && row.classList.contains('mine')));
-  var canDelete = isAdmin || isOwner;
-  var delBtn = bar.querySelector('.sel-delete-btn');
-  if (delBtn) delBtn.style.display = canDelete ? '' : 'none';
+  var canDeleteAll = isAdmin || _allSelectedAreOwn();
+
+  bar.innerHTML =
+    '<button class="sel-cancel-btn" onclick="exitSelectionMode()">✕ Batal</button>' +
+    '<span class="sel-label">'+selectedMsgIds.size+' dipilih</span>' +
+    (canDeleteAll
+      ? '<button class="sel-delete-btn" onclick="delSelectedMsgs()">🗑 Hapus</button>'
+      : '<span style="width:74px"></span>');
+  bar.style.display = 'flex';
+}
+
+/** Cek apakah semua bubble yang dipilih milik currentAccount sendiri */
+function _allSelectedAreOwn() {
+  for (var id of selectedMsgIds) {
+    var row = document.querySelector('[data-msg-id="'+id+'"]');
+    if (!row || !row.classList.contains('mine')) return false;
+  }
+  return true;
 }
 
 function exitSelectionMode() {
   selectionModeActive = false;
-  selectedMsgId = null;
+  selectedMsgIds.clear();
   document.querySelectorAll('.msg-selected').forEach(function(el){ el.classList.remove('msg-selected'); });
   var bar = document.getElementById('selectionBar');
   if (bar) bar.style.display = 'none';
 }
 
-async function delSelectedMsg() {
-  if (!selectedMsgId) return;
-  var id = selectedMsgId;
+async function delSelectedMsgs() {
+  if (selectedMsgIds.size === 0) return;
+  var ids = Array.from(selectedMsgIds);
+  var label = ids.length === 1 ? 'pesan ini' : ids.length + ' pesan ini';
+  if (!confirm('Hapus ' + label + '?')) return;
   exitSelectionMode();
-  if (!confirm('Hapus pesan ini?')) return;
-  var res = await sb.from('chat_messages').delete().eq('id', id);
+  // Hapus dari DB semua sekaligus
+  var res = await sb.from('chat_messages').delete().in('id', ids);
   if (res.error) { toast('Gagal hapus', false); return; }
-  var el = document.querySelector('[data-msg-id="'+id+'"]');
-  if (el) el.remove();
-  toast('Pesan dihapus');
+  ids.forEach(function(id) {
+    var el = document.querySelector('[data-msg-id="'+id+'"]');
+    if (el) el.remove();
+    seenMsgIds.delete(String(id));
+  });
+  toast(ids.length === 1 ? 'Pesan dihapus' : ids.length + ' pesan dihapus');
 }
 
 // ========== NOTES ==========
@@ -353,6 +402,7 @@ document.addEventListener('click', function(e){
   if (!e.target.closest('.note-chevron')&&!e.target.closest('.read-author-option')&&!e.target.closest('.note-options-menu')) closeActiveOptionMenu();
   if (!e.target.closest('.emoji-picker-wrap')&&!e.target.closest('.emoji-trigger')) closeEmojiPicker();
   if (!e.target.closest('.msg-action-menu')&&!e.target.closest('.bubble-action-btn')) closeMsgActionMenu();
+  // Klik di luar bubble saat selection mode → exit
   if (selectionModeActive && !e.target.closest('[data-msg-id]') && !e.target.closest('#selectionBar')) {
     exitSelectionMode();
   }
@@ -709,18 +759,15 @@ function triggerUploadConfirm(input) {
   if (!file) return;
   pendingUploadFile = file;
 
-  // Fill modal info
   document.getElementById('uploadFileName').textContent = file.name;
   document.getElementById('uploadFileSize').textContent = fmtBytes(file.size) + ' · ' + (file.type || 'unknown');
 
-  // Reset progress
   document.getElementById('uploadProgressWrap').style.display = 'none';
   document.getElementById('uploadProgressFill').style.width = '0%';
   document.getElementById('uploadPctLabel').textContent = '0%';
   document.getElementById('uploadSpeedLabel').textContent = '—';
   document.getElementById('uploadRemainLabel').textContent = '—';
 
-  // Reset buttons
   var goBtn = document.getElementById('uploadGoBtn');
   var cancelBtn = document.getElementById('uploadCancelBtn');
   var closeBtn = document.getElementById('uploadModalCloseBtn');
@@ -730,12 +777,10 @@ function triggerUploadConfirm(input) {
   closeBtn.style.display = '';
 
   document.getElementById('uploadConfirmModal').classList.add('show');
-  // Reset file input so same file can be re-selected
   input.value = '';
 }
 
 function cancelUploadModal() {
-  // Abort ongoing upload if any
   if (uploadXHR) {
     try { uploadXHR.abort(); } catch(e){}
     uploadXHR = null;
@@ -752,10 +797,9 @@ async function startGalleryUpload() {
   var cancelBtn = document.getElementById('uploadCancelBtn');
   var closeBtn = document.getElementById('uploadModalCloseBtn');
 
-  // Show progress, disable upload btn, change cancel to Batal
   goBtn.disabled = true;
   goBtn.textContent = 'Mengupload...';
-  closeBtn.style.display = 'none'; // hide X during upload
+  closeBtn.style.display = 'none';
   cancelBtn.textContent = 'Batalkan';
 
   document.getElementById('uploadProgressWrap').style.display = 'flex';
@@ -795,14 +839,8 @@ async function startGalleryUpload() {
         if (xhr.status >= 200 && xhr.status < 300) resolve();
         else reject(new Error('HTTP ' + xhr.status));
       };
-      xhr.onerror = function() {
-        uploadXHR = null;
-        reject(new Error('Network error'));
-      };
-      xhr.onabort = function() {
-        uploadXHR = null;
-        reject(new Error('Dibatalkan'));
-      };
+      xhr.onerror = function() { uploadXHR = null; reject(new Error('Network error')); };
+      xhr.onabort = function() { uploadXHR = null; reject(new Error('Dibatalkan')); };
       xhr.send(file);
     });
     success = true;
@@ -812,7 +850,6 @@ async function startGalleryUpload() {
     } else {
       toast('Upload gagal: ' + err.message, false);
     }
-    // Reset modal state
     goBtn.disabled = false;
     goBtn.textContent = 'Upload';
     cancelBtn.textContent = 'Batal';
@@ -825,7 +862,6 @@ async function startGalleryUpload() {
 
   if (!success) return;
 
-  // Save to DB
   var pub = sb.storage.from('gallery').getPublicUrl(name);
   var dbRes = await sb.from('gallery').insert([{file_url: pub.data.publicUrl, file_name: name}]);
 
@@ -837,7 +873,6 @@ async function startGalleryUpload() {
     loadGallery();
   }
 
-  // Close modal automatically on success
   pendingUploadFile = null;
   uploadXHR = null;
   document.getElementById('uploadConfirmModal').classList.remove('show');
@@ -862,17 +897,19 @@ function buildMsgEl(m) {
   var isVidMsg = msgContent.startsWith('[video]');
   var mediaUrl = (isImgMsg || isVidMsg) ? msgContent.slice(isImgMsg?5:7) : null;
 
-  // Build the action button (inside bubble)
+  // Action button (inside bubble, center-vertical)
   var actionBtn = document.createElement('button');
   actionBtn.className = 'bubble-action-btn';
   actionBtn.title = 'Opsi';
   actionBtn.textContent = '⋮';
   actionBtn.addEventListener('click', function(e) {
     e.stopPropagation();
+    // Jangan tampilkan menu saat selection mode
+    if (selectionModeActive) return;
     showMsgActionMenu(m.id, m.sender_name, m.message || '', actionBtn);
   });
 
-  // Build reply preview
+  // Reply preview
   var replyEl = null;
   if (m.reply_to_name && m.reply_to_text) {
     var rColor = m.reply_to_name === "Jef'z" ? '#3d5afe' : '#e91e8c';
@@ -886,17 +923,21 @@ function buildMsgEl(m) {
       '<span class="reply-prev-text">'+esc(rPreview)+'</span>';
   }
 
-  // Build bubble content
+  // Build bubble
   var bubble = document.createElement('div');
-  bubble.className = 'bubble';
+  if (mediaUrl) {
+    bubble.className = 'bubble bubble-media';
+  } else {
+    bubble.className = 'bubble';
+  }
 
-  // Insert action btn first (absolutely positioned)
+  // Action button (absolutely positioned, vertical center)
   bubble.appendChild(actionBtn);
 
-  // Insert reply preview
+  // Reply preview
   if (replyEl) bubble.appendChild(replyEl);
 
-  // Insert main content
+  // Content
   if (isImgMsg && mediaUrl) {
     var img = document.createElement('img');
     img.src = mediaUrl;
@@ -913,6 +954,8 @@ function buildMsgEl(m) {
     vid.playsInline = true;
     bubble.appendChild(vid);
   } else {
+    // PENTING: gunakan textContent untuk preserve newline.
+    // CSS `white-space: pre-wrap` di .bubble akan merender \n dengan benar.
     var textNode = document.createTextNode(msgContent);
     bubble.appendChild(textNode);
   }
@@ -923,10 +966,9 @@ function buildMsgEl(m) {
   btime.textContent = fmtTime(m.created_at);
   bubble.appendChild(btime);
 
-  // Sender label (only for theirs)
+  // Sender label (theirs only)
   var blockInner = document.createElement('div');
   blockInner.className = 'msg-block-inner';
-
   if (!isMe) {
     var senderSpan = document.createElement('span');
     senderSpan.className = 'msg-sender';
@@ -946,25 +988,35 @@ function buildMsgEl(m) {
 
   d.appendChild(swipeWrap);
 
-  // Touch: long-press to enter selection mode
+  // Touch interactions
   initLongPressSelect(d, m, canDelete);
-  // Touch: swipe to reply
   initSwipeReply(d, m);
 
   return d;
 }
 
-// Long-press → selection mode
+// ========== LONG-PRESS → ENTER SELECTION MODE ==========
 function initLongPressSelect(rowEl, m, canDelete) {
   var bubble = rowEl.querySelector('.bubble');
   if (!bubble) return;
   var pressTimer = null;
   var moved = false;
+  var touchStartX = 0, touchStartY = 0;
 
   bubble.addEventListener('touchstart', function(e) {
-    // Don't trigger on action button
+    // Abaikan klik di action button
     if (e.target.closest('.bubble-action-btn')) return;
+
+    // Jika selection mode sudah aktif → klik biasa = toggle
+    if (selectionModeActive) {
+      // Tidak handle di sini — akan di-handle di touchend
+      return;
+    }
+
     moved = false;
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+
     pressTimer = setTimeout(function() {
       if (!moved && m.id) {
         if (navigator.vibrate) navigator.vibrate(40);
@@ -973,20 +1025,34 @@ function initLongPressSelect(rowEl, m, canDelete) {
     }, 500);
   }, { passive: true });
 
-  bubble.addEventListener('touchmove', function() {
-    moved = true;
-    clearTimeout(pressTimer);
+  bubble.addEventListener('touchmove', function(e) {
+    var dx = Math.abs(e.touches[0].clientX - touchStartX);
+    var dy = Math.abs(e.touches[0].clientY - touchStartY);
+    if (dx > 8 || dy > 8) {
+      moved = true;
+      clearTimeout(pressTimer);
+    }
   }, { passive: true });
 
-  bubble.addEventListener('touchend', function() {
+  bubble.addEventListener('touchend', function(e) {
     clearTimeout(pressTimer);
+
+    // Jika selection mode aktif & tidak bergerak → toggle select
+    if (selectionModeActive && !moved && m.id) {
+      // Cegah event lain (mis. swipe)
+      e.stopPropagation();
+      toggleMsgSelection(String(m.id));
+    }
+    moved = false;
   });
 
   bubble.addEventListener('touchcancel', function() {
     clearTimeout(pressTimer);
+    moved = false;
   });
 }
 
+// ========== SWIPE TO REPLY ==========
 function initSwipeReply(rowEl, m) {
   var swipeWrap = rowEl.querySelector('.msg-swipe-wrap');
   var startX = 0, startY = 0, dx = 0, swiping = false, triggered = false;
@@ -998,6 +1064,7 @@ function initSwipeReply(rowEl, m) {
   }, { passive: true });
 
   swipeWrap.addEventListener('touchmove', function(e) {
+    // Disable swipe saat selection mode
     if (selectionModeActive) return;
     var t = e.touches[0];
     dx = t.clientX - startX;
@@ -1025,8 +1092,6 @@ function initSwipeReply(rowEl, m) {
     swiping = false; triggered = false;
   });
 }
-
-var pendingMsgKey = null;
 
 function appendMsg(m, smooth) {
   var el = document.getElementById('chatList');
@@ -1100,11 +1165,14 @@ var isSending = false;
 
 async function sendMsg() {
   if (isSending) return;
-  var input=document.getElementById('chatInput');
-  var msg=input.value.trim();
-  if (!msg||!currentAccount) return;
+  var input = document.getElementById('chatInput');
+  // PENTING: ambil value SEBELUM trim untuk menjaga newline.
+  // Hanya trim whitespace di awal & akhir, bukan di tengah.
+  var rawMsg = input.value;
+  var msg = rawMsg.replace(/^[\s\uFEFF\xA0]+|[\s\uFEFF\xA0]+$/g, ''); // trim awal & akhir saja
+  if (!msg || !currentAccount) return;
   isSending = true;
-  input.value='';
+  input.value = '';
   input.style.height = '';
   input.focus();
 
@@ -1125,20 +1193,20 @@ async function sendMsg() {
   };
   clearReplyBanner();
 
-  var el=document.getElementById('chatList');
-  var ph=el.querySelector('.state-msg'); if (ph) el.innerHTML='';
-  var msgEl=buildMsgEl(fakeMsg); msgEl.dataset.pending='1';
+  var el = document.getElementById('chatList');
+  var ph = el.querySelector('.state-msg'); if (ph) el.innerHTML = '';
+  var msgEl = buildMsgEl(fakeMsg); msgEl.dataset.pending = '1';
   el.appendChild(msgEl); scrollBottom(el, true);
 
-  var res=await sb.from('chat_messages').insert([insertData]);
+  var res = await sb.from('chat_messages').insert([insertData]);
   isSending = false;
   if (res.error){
-    var pend=el.querySelector('[data-pending]'); if (pend) pend.remove();
-    toast('Gagal kirim',false); input.value=msg; return;
+    var pend = el.querySelector('[data-pending]'); if (pend) pend.remove();
+    toast('Gagal kirim', false); input.value = msg; return;
   }
   setTimeout(async function(){
-    var pend=el.querySelector('[data-pending]'); if (!pend) return;
-    var r=await sb.from('chat_messages').select('id').order('created_at',{ascending:false}).limit(1);
+    var pend = el.querySelector('[data-pending]'); if (!pend) return;
+    var r = await sb.from('chat_messages').select('id').order('created_at',{ascending:false}).limit(1);
     if (r.data&&r.data[0]){
       var newId = String(r.data[0].id);
       if (!seenMsgIds.has(newId)) seenMsgIds.add(newId);
@@ -1199,11 +1267,9 @@ async function delMedia(id, name) {
 }
 
 // ========== LIGHTBOX ==========
-// ONLY close via X button — clicking background does nothing
 function openLightbox(url) {
   document.getElementById('lightboxImg').src = url;
   document.getElementById('lightboxImg').style.display = '';
-  // Remove any leftover video
   var vl = document.getElementById('lightboxVideo');
   if (vl) { vl.pause(); vl.src=''; vl.remove(); }
   document.getElementById('lightbox').classList.add('show');
@@ -1233,7 +1299,6 @@ function openVideoLightbox(url) {
   lb.classList.add('show');
 }
 
-// ESC key only closes via keyboard
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') {
     closeLightbox();
