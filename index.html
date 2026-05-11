@@ -28,19 +28,20 @@
     <!-- Step 1: Pilih akun -->
     <div id="stepAccount">
       <div class="account-list">
-        <button class="account-card" onclick="selectAccount('Ndifaa','user')">
-          <div class="acc-avatar ndifaa">N</div>
-          <div class="acc-info">
-            <span class="acc-name">Ndifaa</span>
-            <span class="acc-role">User</span>
-          </div>
-          <span class="acc-arrow">›</span>
-        </button>
+        <!-- Admin di atas, User di bawah -->
         <button class="account-card" onclick="selectAccount('Jef\'z','admin')">
           <div class="acc-avatar jefz">J</div>
           <div class="acc-info">
             <span class="acc-name">Jef'z</span>
             <span class="acc-role">Admin</span>
+          </div>
+          <span class="acc-arrow">›</span>
+        </button>
+        <button class="account-card" onclick="selectAccount('Ndifaa','user')">
+          <div class="acc-avatar ndifaa">N</div>
+          <div class="acc-info">
+            <span class="acc-name">Ndifaa</span>
+            <span class="acc-role">User</span>
           </div>
           <span class="acc-arrow">›</span>
         </button>
@@ -94,6 +95,11 @@
 
   <!-- NOTES TAB -->
   <div id="tabNotes" class="tab">
+    <!-- Countdown Banner -->
+    <div class="notes-countdown-banner">
+      <div class="countdown-label" id="countdownLabel">Menghitung...</div>
+      <div class="countdown-value" id="countdown">—</div>
+    </div>
     <div id="notesList" class="notes-list"></div>
     <div class="notes-fab-wrap">
       <button class="fab-btn" onclick="openNoteModal()" id="fabAddNote">+</button>
@@ -102,13 +108,14 @@
 
   <!-- GALLERY TAB -->
   <div id="tabGallery" class="tab">
-    <div class="gallery-header">
-      <label class="btn-upload" id="uploadLabel">
-        + Upload
+    <div id="galleryGrid" class="gallery-grid"></div>
+    <!-- FAB Upload -->
+    <div class="gallery-fab-wrap">
+      <label class="fab-btn fab-upload-label" title="Upload">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="22" height="22"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
         <input type="file" id="fileUpload" accept="image/*,video/*" style="display:none" onchange="doUpload(this)"/>
       </label>
     </div>
-    <div id="galleryGrid" class="gallery-grid"></div>
   </div>
 
   <!-- BOTTOM NAV -->
