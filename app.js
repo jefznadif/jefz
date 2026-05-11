@@ -25,10 +25,14 @@ let notesLoaded = false;
 let galleryLoaded = false;
 
 // Reply state
-let replyTarget = null; // { id, sender_name, message }
+let replyTarget = null;
 
 // Emoji picker state
 let emojiPickerOpen = false;
+
+// ===== FIX: Selection mode for long-press delete =====
+let selectedMsgId = null;
+let selectionModeActive = false;
 
 // ========== ANIMATED ORB BACKGROUND ==========
 (function initOrbBg() {
@@ -243,6 +247,7 @@ function doLogin() {
 function doLogout() {
   if (!confirm('Yakin mau logout?')) return;
   stopChatSync(); stopCountdown();
+  exitSelectionMode();
   sessionStorage.clear();
   currentAccount=null; pendingAccount=null;
   chatLoaded=false; notesLoaded=false; galleryLoaded=false;
@@ -303,6 +308,63 @@ function scrollBottom(el, smooth) { if(!el)return; requestAnimationFrame(functio
 function autoResize(el) { el.style.height='auto'; el.style.height=el.scrollHeight+'px'; }
 function fmtBytes(bytes) { if(bytes<1024)return bytes+' B'; if(bytes<1048576)return(bytes/1024).toFixed(1)+' KB'; return(bytes/1048576).toFixed(2)+' MB'; }
 
+// ========== SELECTION MODE (Touch long-press delete) ==========
+function enterSelectionMode(msgId) {
+  // exit if already in selection mode with same id
+  if (selectionModeActive && selectedMsgId === msgId) return;
+  exitSelectionMode();
+  selectionModeActive = true;
+  selectedMsgId = msgId;
+
+  // Highlight the selected bubble
+  var row = document.querySelector('[data-msg-id="'+msgId+'"]');
+  if (row) row.classList.add('msg-selected');
+
+  // Show selection header bar
+  var bar = document.getElementById('selectionBar');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'selectionBar';
+    bar.className = 'selection-bar';
+    bar.innerHTML =
+      '<button class="sel-cancel-btn" onclick="exitSelectionMode()">✕ Batal</button>' +
+      '<span class="sel-label">1 pesan dipilih</span>' +
+      '<button class="sel-delete-btn" onclick="delSelectedMsg()">🗑 Hapus</button>';
+    document.querySelector('.topbar').appendChild(bar);
+  }
+  bar.style.display = 'flex';
+
+  // Check if user can delete this message
+  var isAdmin = currentAccount && currentAccount.role === 'admin';
+  // Get sender from the row
+  var senderEl = row ? row.querySelector('.msg-sender') : null;
+  var senderName = senderEl ? senderEl.textContent.replace(' 👑','').trim() : '';
+  var isOwner = currentAccount && (senderName === currentAccount.name || row.classList.contains('mine'));
+  var canDelete = isAdmin || isOwner;
+  var delBtn = bar.querySelector('.sel-delete-btn');
+  if (delBtn) delBtn.style.display = canDelete ? '' : 'none';
+}
+
+function exitSelectionMode() {
+  selectionModeActive = false;
+  selectedMsgId = null;
+  document.querySelectorAll('.msg-selected').forEach(function(el){ el.classList.remove('msg-selected'); });
+  var bar = document.getElementById('selectionBar');
+  if (bar) bar.style.display = 'none';
+}
+
+async function delSelectedMsg() {
+  if (!selectedMsgId) return;
+  var id = selectedMsgId;
+  exitSelectionMode();
+  if (!confirm('Hapus pesan ini?')) return;
+  var res = await sb.from('chat_messages').delete().eq('id', id);
+  if (res.error) { toast('Gagal hapus', false); return; }
+  var el = document.querySelector('[data-msg-id="'+id+'"]');
+  if (el) el.remove();
+  toast('Pesan dihapus');
+}
+
 // ========== NOTES ==========
 var notesCache={}, activeNoteOptionMenu=null;
 function closeActiveOptionMenu() {
@@ -313,6 +375,10 @@ document.addEventListener('click', function(e){
   if (!e.target.closest('.note-chevron')&&!e.target.closest('.read-author-option')&&!e.target.closest('.note-options-menu')) closeActiveOptionMenu();
   if (!e.target.closest('.emoji-picker-wrap')&&!e.target.closest('.emoji-trigger')) closeEmojiPicker();
   if (!e.target.closest('.msg-action-menu')&&!e.target.closest('.msg-action-btn')) closeMsgActionMenu();
+  // Tap outside selection exits it
+  if (selectionModeActive && !e.target.closest('[data-msg-id]') && !e.target.closest('#selectionBar')) {
+    exitSelectionMode();
+  }
 });
 
 function showNoteOptions(cardElement, noteId, anchorElement) {
@@ -481,20 +547,14 @@ const EMOJI_CATEGORIES = [
 function buildEmojiPicker() {
   var existing = document.getElementById('emojiPickerPanel');
   if (existing) return existing;
-  
   var panel = document.createElement('div');
   panel.id = 'emojiPickerPanel';
   panel.className = 'emoji-picker-wrap';
-  
-  // Category tabs
   var tabs = document.createElement('div');
   tabs.className = 'emoji-cat-tabs';
-  
   var body = document.createElement('div');
   body.className = 'emoji-body';
-  
   EMOJI_CATEGORIES.forEach(function(cat, idx) {
-    // Tab button
     var tab = document.createElement('button');
     tab.className = 'emoji-cat-tab' + (idx===0?' active':'');
     tab.title = cat.label;
@@ -506,30 +566,21 @@ function buildEmojiPicker() {
       document.getElementById('emoji-sec-'+idx).style.display='';
     };
     tabs.appendChild(tab);
-    
-    // Section
     var sec = document.createElement('div');
     sec.className = 'emoji-section';
     sec.id = 'emoji-sec-'+idx;
     if (idx!==0) sec.style.display='none';
-    
     cat.emojis.forEach(function(em) {
       var btn = document.createElement('button');
       btn.className = 'emoji-item';
       btn.textContent = em;
-      btn.onclick = function(e) {
-        e.stopPropagation();
-        insertEmoji(em);
-      };
+      btn.onclick = function(e) { e.stopPropagation(); insertEmoji(em); };
       sec.appendChild(btn);
     });
     body.appendChild(sec);
   });
-  
   panel.appendChild(tabs);
   panel.appendChild(body);
-  
-  // Attach to chat bar area
   var chatBar = document.querySelector('.chat-bar');
   if (chatBar) chatBar.appendChild(panel);
   return panel;
@@ -592,11 +643,8 @@ function showMsgActionMenu(msgId, senderName, message, anchorEl) {
   var isAdmin = currentAccount && currentAccount.role === 'admin';
   var isOwner = currentAccount && senderName === currentAccount.name;
   var canDelete = isAdmin || isOwner;
-  
   var menu = document.createElement('div');
   menu.className = 'msg-action-menu';
-  
-  // Reply always available
   var replyBtn = document.createElement('button');
   replyBtn.className = 'msg-action-item';
   replyBtn.innerHTML = '↩ Balas';
@@ -606,7 +654,6 @@ function showMsgActionMenu(msgId, senderName, message, anchorEl) {
     setReply(msgId, senderName, message);
   };
   menu.appendChild(replyBtn);
-  
   if (canDelete) {
     var delBtn = document.createElement('button');
     delBtn.className = 'msg-action-item danger';
@@ -618,7 +665,6 @@ function showMsgActionMenu(msgId, senderName, message, anchorEl) {
     };
     menu.appendChild(delBtn);
   }
-  
   var rect = anchorEl.getBoundingClientRect();
   var isMe = currentAccount && senderName === currentAccount.name;
   menu.style.position = 'fixed';
@@ -628,7 +674,6 @@ function showMsgActionMenu(msgId, senderName, message, anchorEl) {
   } else {
     menu.style.left = rect.left + 'px';
   }
-  
   document.body.appendChild(menu);
   activeMsgActionMenu = menu;
 }
@@ -637,7 +682,6 @@ async function delMsg(id) {
   if (!confirm('Hapus pesan ini?')) return;
   var res = await sb.from('chat_messages').delete().eq('id', id);
   if (res.error) { toast('Gagal hapus', false); return; }
-  // Remove from DOM
   var el = document.querySelector('[data-msg-id="'+id+'"]');
   if (el) el.remove();
   toast('Pesan dihapus');
@@ -648,14 +692,11 @@ async function doChatUpload(input) {
   if (!currentAccount) return;
   var file = input.files[0];
   if (!file) return;
-  
   var isVid = file.type.startsWith('video/');
   var ext = file.name.split('.').pop();
   var name = 'chat_' + Date.now() + '_' + Math.random().toString(36).slice(2,6) + '.' + ext;
   var uploadUrl = SB_URL + '/storage/v1/object/gallery/' + name;
-  
   var lastLoaded = 0, lastTime = Date.now();
-  
   try {
     await new Promise(function(resolve, reject) {
       var xhr = new XMLHttpRequest();
@@ -679,17 +720,13 @@ async function doChatUpload(input) {
   } catch(err) {
     hideUploadProgress(); toast('Upload gagal', false); input.value=''; return;
   }
-  
   var pub = sb.storage.from('gallery').getPublicUrl(name);
   var mediaUrl = pub.data.publicUrl;
-  
-  // Send as message with media
   var msgContent = isVid ? '[video]'+mediaUrl : '[img]'+mediaUrl;
   var res = await sb.from('chat_messages').insert([{
     message: msgContent, user_id: uid,
     sender_name: currentAccount.name, sender_role: currentAccount.role
   }]);
-  
   hideUploadProgress();
   if (res.error) { toast('Gagal kirim media', false); } else { toast('Media terkirim ✓'); }
   input.value='';
@@ -701,34 +738,30 @@ function buildMsgEl(m) {
   var isAdmin = currentAccount && currentAccount.role === 'admin';
   var isOwner = currentAccount && m.sender_name === currentAccount.name;
   var canDelete = isAdmin || isOwner;
-  
+
   var d = document.createElement('div');
   d.className = 'msg-row ' + (isMe ? 'mine' : 'theirs');
   if (m.id) d.dataset.msgId = String(m.id);
-  
+
   var nameColor = m.sender_name === "Jef'z" ? '#3d5afe' : '#e91e8c';
   var roleTag = m.sender_role === 'admin' ? ' 👑' : '';
-  
-  // Check if message is media
+
   var msgContent = m.message || '';
   var isImgMsg = msgContent.startsWith('[img]');
   var isVidMsg = msgContent.startsWith('[video]');
   var mediaUrl = (isImgMsg || isVidMsg) ? msgContent.slice(isImgMsg?5:7) : null;
-  
-  // Reply preview HTML
+
   var replyHtml = '';
   if (m.reply_to_name && m.reply_to_text) {
     var rColor = m.reply_to_name === "Jef'z" ? '#3d5afe' : '#e91e8c';
     var rPreview = m.reply_to_text.length > 50 ? m.reply_to_text.slice(0,50)+'…' : m.reply_to_text;
-    // Check if reply is media
     if (rPreview.startsWith('[img]')||rPreview.startsWith('[video]')) rPreview = rPreview.startsWith('[img]')?'🖼 Foto':'🎬 Video';
     replyHtml = '<div class="reply-preview" style="border-left:3px solid '+rColor+'">' +
       '<span class="reply-prev-name" style="color:'+rColor+'">'+esc(m.reply_to_name)+'</span>' +
       '<span class="reply-prev-text">'+esc(rPreview)+'</span>' +
     '</div>';
   }
-  
-  // Bubble content
+
   var bubbleInner;
   if (isImgMsg && mediaUrl) {
     bubbleInner = '<img src="'+esc(mediaUrl)+'" class="bubble-img" loading="lazy" onclick="openLightbox(\''+esc(mediaUrl)+'\')" />';
@@ -737,21 +770,16 @@ function buildMsgEl(m) {
   } else {
     bubbleInner = esc(msgContent);
   }
-  
-  var isTouchDevice = window.matchMedia('(hover: none)').matches;
-  
-  // Action button (non-touch)
-  var actionBtn = '';
-  if (!isTouchDevice) {
-    actionBtn = '<button class="msg-action-btn" title="Opsi" onclick="showMsgActionMenu(\''+m.id+'\',\''+esc(m.sender_name)+'\',\''+esc(m.message||'')+'\',this)">⋮</button>';
-  }
-  
+
+  // Always show action button (both touch and non-touch)
+  var actionBtn = '<button class="msg-action-btn" title="Opsi" onclick="showMsgActionMenu(\''+m.id+'\',\''+esc(m.sender_name)+'\',\''+esc(m.message||'')+'\',this)">⋮</button>';
+
   var senderHtml = !isMe ? '<span class="msg-sender" style="color:'+nameColor+'">'+esc(m.sender_name)+roleTag+'</span>' : '';
-  
+
   d.innerHTML =
     '<div class="msg-swipe-wrap">' +
       '<div class="msg-block">' +
-        (isTouchDevice ? '' : '<div class="msg-action-wrap">' + actionBtn + '</div>') +
+        '<div class="msg-action-wrap">' + actionBtn + '</div>' +
         '<div class="msg-block-inner">' +
           senderHtml +
           '<div class="bubble">' +
@@ -762,57 +790,78 @@ function buildMsgEl(m) {
         '</div>' +
       '</div>' +
     '</div>';
-  
+
+  // Touch: long-press to enter selection mode (always active on touch)
+  initLongPressSelect(d, m, canDelete);
   // Touch: swipe to reply
-  if (isTouchDevice) {
-    initSwipeReply(d, m);
-  }
-  
+  initSwipeReply(d, m);
+
   return d;
+}
+
+// Long-press → selection mode
+function initLongPressSelect(rowEl, m, canDelete) {
+  var bubble = rowEl.querySelector('.bubble');
+  if (!bubble) return;
+  var pressTimer = null;
+  var moved = false;
+
+  bubble.addEventListener('touchstart', function(e) {
+    moved = false;
+    pressTimer = setTimeout(function() {
+      if (!moved && m.id) {
+        // Haptic if supported
+        if (navigator.vibrate) navigator.vibrate(40);
+        enterSelectionMode(String(m.id));
+      }
+    }, 500);
+  }, { passive: true });
+
+  bubble.addEventListener('touchmove', function() {
+    moved = true;
+    clearTimeout(pressTimer);
+  }, { passive: true });
+
+  bubble.addEventListener('touchend', function() {
+    clearTimeout(pressTimer);
+  });
+
+  bubble.addEventListener('touchcancel', function() {
+    clearTimeout(pressTimer);
+  });
 }
 
 function initSwipeReply(rowEl, m) {
   var swipeWrap = rowEl.querySelector('.msg-swipe-wrap');
   var startX = 0, startY = 0, dx = 0, swiping = false, triggered = false;
-  var isMe = currentAccount && m.sender_name === currentAccount.name;
-  
+
   swipeWrap.addEventListener('touchstart', function(e) {
     var t = e.touches[0];
     startX = t.clientX; startY = t.clientY;
     dx = 0; swiping = false; triggered = false;
   }, { passive: true });
-  
+
   swipeWrap.addEventListener('touchmove', function(e) {
+    if (selectionModeActive) return; // don't swipe while in selection mode
     var t = e.touches[0];
     dx = t.clientX - startX;
     var dy = Math.abs(t.clientY - startY);
-    
-    // Hanya swipe horizontal, bukan scroll vertikal
-    if (!swiping && Math.abs(dx) > dy && Math.abs(dx) > 8) {
-      swiping = true;
-    }
-    
+    if (!swiping && Math.abs(dx) > dy && Math.abs(dx) > 8) { swiping = true; }
     if (!swiping) return;
-    
-    // Mine: swipe right (positive dx), Theirs: swipe right juga
-    var swipeDist = Math.max(0, dx); // hanya geser ke kanan
+    var swipeDist = Math.max(0, dx);
     var clamped = Math.min(swipeDist, 72);
-    
     swipeWrap.style.transform = 'translateX('+clamped+'px)';
     swipeWrap.style.transition = 'none';
-    
     if (clamped >= 60 && !triggered) {
       triggered = true;
-      // Haptic-like flash
       rowEl.classList.add('reply-flash');
       setTimeout(function(){rowEl.classList.remove('reply-flash');}, 200);
     }
-    
     if (e.cancelable) e.preventDefault();
   }, { passive: false });
-  
+
   swipeWrap.addEventListener('touchend', function() {
-    if (triggered && dx >= 60) {
+    if (!selectionModeActive && triggered && dx >= 60) {
       setReply(m.id, m.sender_name, m.message || '');
     }
     swipeWrap.style.transition = 'transform 0.25s cubic-bezier(0.34,1.56,0.64,1)';
@@ -820,6 +869,9 @@ function initSwipeReply(rowEl, m) {
     swiping = false; triggered = false;
   });
 }
+
+// ===== FIX: robust dedup — track both real ids AND pending =====
+var pendingMsgKey = null; // tracks the fake msg to avoid double
 
 function appendMsg(m, smooth) {
   var el = document.getElementById('chatList');
@@ -857,10 +909,19 @@ function startChatSync() {
   chatChannel = sb.channel('chat_live_'+Date.now(),{config:{broadcast:{self:false}}})
     .on('postgres_changes',{event:'INSERT',schema:'public',table:'chat_messages'},function(payload){
       if (!isChatActive||!payload.new) return;
-      if (currentAccount&&payload.new.sender_name===currentAccount.name){
-        var el=document.getElementById('chatList');
-        var pend=el.querySelector('[data-pending]');
-        if (pend){pend.dataset.msgId=String(payload.new.id);seenMsgIds.add(String(payload.new.id));pend.removeAttribute('data-pending');return;}
+      var newId = String(payload.new.id);
+      // If we already have this id (e.g. from optimistic render), skip
+      if (seenMsgIds.has(newId)) return;
+      // If sender is us and there's a pending element, claim it
+      if (currentAccount && payload.new.sender_name === currentAccount.name) {
+        var el = document.getElementById('chatList');
+        var pend = el ? el.querySelector('[data-pending]') : null;
+        if (pend) {
+          pend.dataset.msgId = newId;
+          seenMsgIds.add(newId);
+          pend.removeAttribute('data-pending');
+          return;
+        }
       }
       appendMsg(payload.new, true);
     })
@@ -868,22 +929,37 @@ function startChatSync() {
       if (!payload.old||!payload.old.id) return;
       var el2=document.querySelector('[data-msg-id="'+payload.old.id+'"]');
       if (el2) el2.remove();
+      seenMsgIds.delete(String(payload.old.id));
     })
     .subscribe();
+
+  // Poll — only fetch messages newer than the latest seen to avoid any duplication
   pollTimer = setInterval(async function(){
     if (!isChatActive||!chatLoaded) return;
     var res=await sb.from('chat_messages').select('*').order('created_at',{ascending:false}).limit(20);
     if (res.error||!res.data) return;
-    res.data.slice().reverse().forEach(function(m){appendMsg(m,false);});
-  }, 3000);
+    res.data.slice().reverse().forEach(function(m){
+      if (m.id && !seenMsgIds.has(String(m.id))) appendMsg(m, false);
+    });
+  }, 4000);
 }
 
+// ===== FIX: Enter = newline, send only via button =====
+// (Handled in HTML: onkeydown removed from textarea, send button only)
+// We also ensure the textarea in HTML no longer has the Enter-sends handler.
+// This function is kept for the send button.
+var isSending = false; // debounce guard
+
 async function sendMsg() {
+  if (isSending) return;
   var input=document.getElementById('chatInput');
   var msg=input.value.trim();
   if (!msg||!currentAccount) return;
-  input.value=''; input.focus();
-  
+  isSending = true;
+  input.value='';
+  input.style.height = '';
+  input.focus();
+
   var insertData = {
     message: msg, user_id: uid,
     sender_name: currentAccount.name, sender_role: currentAccount.role
@@ -893,29 +969,37 @@ async function sendMsg() {
     insertData.reply_to_name = replyTarget.sender_name;
     insertData.reply_to_text = replyTarget.message;
   }
-  
+
   var fakeMsg = {
     message: msg, sender_name: currentAccount.name, sender_role: currentAccount.role,
     user_id: uid, created_at: new Date().toISOString(),
     reply_to_name: insertData.reply_to_name, reply_to_text: insertData.reply_to_text
   };
   clearReplyBanner();
-  
+
   var el=document.getElementById('chatList');
   var ph=el.querySelector('.state-msg'); if (ph) el.innerHTML='';
   var msgEl=buildMsgEl(fakeMsg); msgEl.dataset.pending='1';
   el.appendChild(msgEl); scrollBottom(el, true);
-  
+
   var res=await sb.from('chat_messages').insert([insertData]);
+  isSending = false;
   if (res.error){
     var pend=el.querySelector('[data-pending]'); if (pend) pend.remove();
     toast('Gagal kirim',false); input.value=msg; return;
   }
+  // Claim the pending element with the real id from DB response
+  // Supabase v2 insert doesn't always return data, so we fetch the latest
   setTimeout(async function(){
     var pend=el.querySelector('[data-pending]'); if (!pend) return;
-    var r=await sb.from('chat_messages').select('*').order('created_at',{ascending:false}).limit(1);
-    if (r.data&&r.data[0]){pend.dataset.msgId=String(r.data[0].id);seenMsgIds.add(String(r.data[0].id));pend.removeAttribute('data-pending');}
-  }, 1200);
+    var r=await sb.from('chat_messages').select('id').order('created_at',{ascending:false}).limit(1);
+    if (r.data&&r.data[0]){
+      var newId = String(r.data[0].id);
+      if (!seenMsgIds.has(newId)) seenMsgIds.add(newId);
+      pend.dataset.msgId = newId;
+      pend.removeAttribute('data-pending');
+    }
+  }, 800);
 }
 
 // ========== GALLERY ==========
@@ -1012,4 +1096,4 @@ function openVideoLightbox(url){
   if (!vl){vl=document.createElement('video');vl.id='lightboxVideo';vl.controls=true;vl.style.cssText='max-width:94vw;max-height:88vh;border-radius:10px;object-fit:contain;';lb.appendChild(vl);}
   vl.src=url; vl.play(); lb.classList.add('show');
 }
-document.addEventListener('keydown',function(e){if(e.key==='Escape')closeLightbox();});
+document.addEventListener('keydown',function(e){if(e.key==='Escape'){closeLightbox();exitSelectionMode();}});
