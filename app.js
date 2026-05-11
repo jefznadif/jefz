@@ -127,34 +127,93 @@ function getVisibleHeight() {
 function adjustOpenModals() {
   var vh = getVisibleHeight();
   var maxH = Math.floor(vh * 0.92);
-  document.querySelectorAll('.modal-overlay.show .modal-box').forEach(function(box) {
+  // Modal biasa saja (bukan edit modal)
+  document.querySelectorAll('.modal-overlay.show:not(#editModal) .modal-box').forEach(function(box) {
     box.style.maxHeight = maxH + 'px';
   });
-  // Edit modal body juga perlu dibatasi supaya bisa scroll saat keyboard aktif
-  var editBody = document.querySelector('#editModal.show .modal-edit-body');
-  if (editBody) {
-    // Header ~62px, padding ~40px — sisanya untuk body
-    var headerH = 62;
-    editBody.style.maxHeight = (maxH - headerH) + 'px';
+  // Edit modal pakai fungsi khusus
+  if (document.getElementById('editModal').classList.contains('show')) {
+    _adjustEditModal();
   }
 }
 
+function _adjustEditModal() {
+  var overlay = document.getElementById('editModal');
+  var box     = document.getElementById('editModalBox');
+  if (!overlay || !box) return;
+
+  var vp = window.visualViewport;
+  if (vp) {
+    // Tinggi ruang yang tersisa di atas keyboard
+    var availH = vp.height;
+    // Set overlay persis di area visible viewport (otomatis di atas keyboard)
+    overlay.style.position = 'fixed';
+    overlay.style.top      = vp.offsetTop + 'px';
+    overlay.style.left     = vp.offsetLeft + 'px';
+    overlay.style.width    = vp.width + 'px';
+    overlay.style.height   = availH + 'px';
+    overlay.style.bottom   = 'auto';
+    // Batasi tinggi box supaya pas dalam ruang tersedia
+    box.style.maxHeight = Math.floor(availH * 0.94) + 'px';
+  } else {
+    // Fallback: pakai innerHeight
+    overlay.style.top    = '0';
+    overlay.style.height = window.innerHeight + 'px';
+    box.style.maxHeight  = Math.floor(window.innerHeight * 0.92) + 'px';
+  }
+}
+
+function _resetEditModalOverlay() {
+  var overlay = document.getElementById('editModal');
+  var box     = document.getElementById('editModalBox');
+  if (overlay) {
+    overlay.style.position = '';
+    overlay.style.top      = '';
+    overlay.style.left     = '';
+    overlay.style.width    = '';
+    overlay.style.height   = '';
+    overlay.style.bottom   = '';
+  }
+  if (box) box.style.maxHeight = '';
+}
+
+// Dengarkan perubahan viewport (keyboard naik/turun)
 if (window.visualViewport) {
-  window.visualViewport.addEventListener('resize', adjustOpenModals);
+  window.visualViewport.addEventListener('resize', function() {
+    if (document.getElementById('editModal').classList.contains('show')) {
+      _adjustEditModal();
+    } else {
+      adjustOpenModals();
+    }
+  });
+  window.visualViewport.addEventListener('scroll', function() {
+    if (document.getElementById('editModal').classList.contains('show')) {
+      _adjustEditModal();
+    }
+  });
 } else {
   window.addEventListener('resize', adjustOpenModals);
 }
 
+// iOS butuh delay ~300ms setelah keyboard muncul
 document.addEventListener('focusin', function(e) {
   var tag = e.target.tagName;
-  if (tag === 'INPUT' || tag === 'TEXTAREA') {
-    if (document.querySelector('.modal-overlay.show')) {
-      setTimeout(adjustOpenModals, 350);
-    }
+  if (tag !== 'INPUT' && tag !== 'TEXTAREA') return;
+  if (document.getElementById('editModal').classList.contains('show')) {
+    setTimeout(_adjustEditModal, 80);
+    setTimeout(_adjustEditModal, 320);
+  } else if (document.querySelector('.modal-overlay.show')) {
+    setTimeout(adjustOpenModals, 350);
   }
 });
 document.addEventListener('focusout', function() {
-  setTimeout(adjustOpenModals, 200);
+  setTimeout(function() {
+    if (document.getElementById('editModal').classList.contains('show')) {
+      _adjustEditModal();
+    } else {
+      adjustOpenModals();
+    }
+  }, 200);
 });
 
 // ========== BOOT ==========
@@ -632,12 +691,10 @@ function openEditModal(id) {
     '<span class="edit-author-dot" style="background:' + authorColor + '"></span>' +
     esc(n.author || '');
 
-  // Judul: auto-resize
   var titleEl = document.getElementById('editTitleInput');
   titleEl.value = n.title || '';
   titleEl.oninput = function() { autoResize(this); };
 
-  // Isi: auto-resize (tumbuh bersama konten)
   var bodyEl = document.getElementById('editBodyInput');
   bodyEl.value = n.content || '';
   bodyEl.oninput = function() { autoResize(this); };
@@ -648,7 +705,7 @@ function openEditModal(id) {
   setTimeout(function() {
     autoResize(titleEl);
     autoResize(bodyEl);
-    adjustOpenModals();
+    _adjustEditModal();
     titleEl.focus();
   }, 80);
 }
@@ -656,11 +713,12 @@ function openEditModal(id) {
 function closeEditModal(e) {
   if (e && e.target !== document.getElementById('editModal')) return;
   document.getElementById('editModal').classList.remove('show');
+  _resetEditModalOverlay();
 
   var titleEl = document.getElementById('editTitleInput');
-  var bodyEl = document.getElementById('editBodyInput');
+  var bodyEl  = document.getElementById('editBodyInput');
   if (titleEl) titleEl.style.height = '';
-  if (bodyEl) bodyEl.style.height = '';
+  if (bodyEl)  bodyEl.style.height  = '';
 }
 
 async function saveEditNote() {
