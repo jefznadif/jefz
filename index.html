@@ -95,17 +95,16 @@
       <button class="reply-banner-close" onclick="clearReplyBanner()">✕</button>
     </div>
 
-    <!-- CHAT BAR -->
+    <!-- CHAT BAR — Enter now only creates newline, send via button -->
     <div class="chat-bar">
       <!-- Emoji trigger -->
       <button class="emoji-trigger" id="emojiTrigger" onclick="toggleEmojiPicker(event)" title="Emoji">
         😊
       </button>
 
-      <!-- Text input -->
+      <!-- Text input: NO onkeydown Enter-send handler -->
       <textarea id="chatInput" class="field chat-field" placeholder="Pesan..." rows="1"
-        oninput="autoResize(this)"
-        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMsg();}"></textarea>
+        oninput="autoResize(this)"></textarea>
 
       <!-- Chat media upload -->
       <label class="chat-upload-btn" title="Kirim foto/video">
@@ -117,7 +116,7 @@
         <input type="file" accept="image/*,video/*" style="display:none" onchange="doChatUpload(this)"/>
       </label>
 
-      <!-- Send button — WA/IG style icon -->
+      <!-- Send button -->
       <button class="btn-send" onclick="sendMsg()" title="Kirim">
         <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
           <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
