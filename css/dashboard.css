@@ -815,3 +815,70 @@ body.dark .reply-preview { background:rgba(255,255,255,0.08); }
 ::-webkit-scrollbar { width:3px; }
 ::-webkit-scrollbar-track { background:transparent; }
 ::-webkit-scrollbar-thumb { background:var(--text3); border-radius:4px; }
+/* ===== TAMBAHKAN INI KE BAGIAN BAWAH dashboard.css ===== */
+
+/* Typing indicator topbar */
+.topbar-online.typing {
+  color: var(--accent);
+  font-style: italic;
+}
+.topbar-online.typing .topbar-online-dot {
+  background: var(--accent);
+  animation: typingPulse 1s ease infinite;
+}
+@keyframes typingPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.4; transform: scale(0.7); }
+}
+
+/* Typing indicator di bawah chat list */
+.typing-indicator {
+  display: flex;
+  align-items: center;
+  padding: 4px 14px 8px;
+  flex-shrink: 0;
+  animation: fadeUp 0.2s ease;
+}
+
+.typing-bubble {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bubble-their);
+  border: 1px solid var(--bubble-bt);
+  border-radius: 18px;
+  border-bottom-left-radius: 5px;
+  padding: 8px 14px;
+  max-width: 180px;
+}
+
+.typing-name {
+  font-size: 11px;
+  color: var(--text3);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.typing-dots {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.typing-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text3);
+  animation: typingDot 1.2s ease infinite;
+}
+
+.typing-dots span:nth-child(1) { animation-delay: 0s; }
+.typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+.typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes typingDot {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30%            { transform: translateY(-5px); opacity: 1; }
+}
