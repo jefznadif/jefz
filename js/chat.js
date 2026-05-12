@@ -19,7 +19,29 @@ let activeMsgActionMenu = null;
 // Presence
 let presenceChannel = null;
 let otherUser = null;
-let onlineStatus = false;
+let presenceInterval = null;
+
+// ========== HELPERS ==========
+function esc(s) {
+  if (!s) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function fmtTime(d) {
+  return new Date(d).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+}
+
+function scrollBottom(el, smooth) {
+  if (!el) return;
+  requestAnimationFrame(() => {
+    el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'instant' });
+  });
+}
 
 // ========== EMOJI DATA ==========
 const EMOJI_CATEGORIES = [
@@ -32,18 +54,6 @@ const EMOJI_CATEGORIES = [
   { icon:'🌍', label:'Travel', emojis:['🌍','🌎','🌏','🌐','🗺️','🧭','🏔️','⛰️','🌋','🏕️','🏖️','🏜️','🏝️','🏟️','🏛️','🏗️','🏘️','🏠','🏡','🏢','🏣','🏤','🏥','🏦','🏨','🏪','🏫','🏬','🏭','🏯','🏰','💒','🗼','🗽','⛪','🕌','⛩️','🕋','⛲','⛺','🌁','🌃','🏙️','🌄','🌅','🌆','🌇','🌉','🎠','🎡','🎢','🎪','🚂','🚃','🚄','🚅','🚇','🚌','🚍','🚎','🚑','🚒','🚓','🚕','✈️','🛫','🛬','💺','🚀','🛸','🚁','🛶','⛵','🚤','🛥️','🛳️','🚢'] },
   { icon:'💡', label:'Objects', emojis:['⌚','📱','💻','⌨️','🖥️','🖨️','🖱️','💽','💾','💿','📀','📷','📸','📹','🎥','📞','☎️','📺','📻','🧭','⏱️','⏰','📡','🔋','🔌','💡','🔦','🕯️','💰','💴','💵','💶','💷','💸','💳','🪙','✉️','📧','📝','📁','📂','📅','📆','📈','📉','📊','📋','📌','📍','✂️','🔒','🔓','🔑','🗝️','🔨','⚒️','🛠️','⚙️','🔗','⛓️','🧰','🧲','💊','🩺','🩻','🧪','🧬','🔬','🔭','📡'] },
 ];
-
-// ========== HELPERS ==========
-function fmtTime(d) {
-  return new Date(d).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-}
-
-function scrollBottom(el, smooth) {
-  if (!el) return;
-  requestAnimationFrame(() => {
-    el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'instant' });
-  });
-}
 
 // ========== EMOJI PICKER ==========
 function buildEmojiPicker() {
@@ -231,19 +241,15 @@ async function getStatusIcon(msgId) {
       .maybeSingle();
     
     if (error || !data) {
-      // No status yet = pending (clock icon)
       return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" class="status-pending"><circle cx="8" cy="8" r="6.5"/><polyline points="8 4.5 8 8 10.5 10"/></svg>';
     }
 
     switch(data.status) {
       case 'sent':
-        // Single check ✓
         return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="status-sent"><polyline points="3.5 8 6.5 11 12.5 4.5"/></svg>';
       case 'delivered':
-        // Double check ✓✓
         return '<svg viewBox="0 0 18 16" fill="none" stroke="currentColor" stroke-width="2" class="status-delivered"><polyline points="2 8 5 11 10.5 5"/><polyline points="6.5 8 9.5 11 15 5"/></svg>';
       case 'read':
-        // Double check blue ✓✓
         return '<svg viewBox="0 0 18 16" fill="none" stroke="currentColor" stroke-width="2" class="status-read"><polyline points="2 8 5 11 10.5 5"/><polyline points="6.5 8 9.5 11 15 5"/></svg>';
       default:
         return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" class="status-pending"><circle cx="8" cy="8" r="6.5"/><polyline points="8 4.5 8 8 10.5 10"/></svg>';
@@ -251,6 +257,15 @@ async function getStatusIcon(msgId) {
   } catch (err) {
     return '';
   }
+}
+
+// Update status icon di semua pesan yang sudah ada
+function refreshAllStatusIcons() {
+  document.querySelectorAll('[data-status-msg-id]').forEach(async (iconEl) => {
+    const msgId = iconEl.dataset.statusMsgId;
+    const iconHtml = await getStatusIcon(msgId);
+    iconEl.innerHTML = iconHtml;
+  });
 }
 
 // ========== BUILD MESSAGE ELEMENT ==========
@@ -317,8 +332,8 @@ function buildMsgEl(m) {
   timeStatusContainer.style.cssText = 'float:right;margin-left:5px;margin-bottom:-2px;position:relative;top:3px;line-height:1;white-space:nowrap;pointer-events:none;padding-top:2px;display:inline-flex;align-items:center;gap:3px;';
 
   const btime = document.createElement('span');
-  btime.className = 'btime';
   btime.textContent = fmtTime(m.created_at);
+  btime.style.cssText = 'font-size:10px;color:var(--text3);position:static;float:none;margin:0;padding:0;top:0;';
   timeStatusContainer.appendChild(btime);
 
   // Status icons (hanya untuk pesan sendiri)
@@ -456,93 +471,100 @@ function appendMsg(m, smooth) {
 // ========== INIT CHAT ==========
 async function initChat() {
   isChatActive = true;
-  chatLoaded = false;
-  seenMsgIds.clear();
-
+  
   const el = document.getElementById('chatList');
-  el.innerHTML = '<p class="state-msg">Memuat...</p>';
+  
+  if (!chatLoaded) {
+    el.innerHTML = '<p class="state-msg">Memuat...</p>';
+    
+    const res = await sb.from('chat_messages').select('*').order('created_at', { ascending: true });
+    if (res.error) {
+      el.innerHTML = '<p class="state-msg err">Error: ' + res.error.message + '</p>';
+      return;
+    }
 
-  const res = await sb.from('chat_messages').select('*').order('created_at', { ascending: true });
-  if (res.error) {
-    el.innerHTML = '<p class="state-msg err">Error: ' + res.error.message + '</p>';
-    return;
-  }
+    el.innerHTML = '';
+    chatLoaded = true;
 
-  el.innerHTML = '';
-  chatLoaded = true;
-
-  if (!res.data || !res.data.length) {
-    el.innerHTML = '<p class="state-msg">Belum ada pesan. Mulai chat!</p>';
-  } else {
-    const frag = document.createDocumentFragment();
-    res.data.forEach(m => {
-      if (m.id) seenMsgIds.add(String(m.id));
-      frag.appendChild(buildMsgEl(m));
-    });
-    el.appendChild(frag);
-    scrollBottom(el, false);
+    if (!res.data || !res.data.length) {
+      el.innerHTML = '<p class="state-msg">Belum ada pesan. Mulai chat!</p>';
+    } else {
+      const frag = document.createDocumentFragment();
+      res.data.forEach(m => {
+        if (m.id) seenMsgIds.add(String(m.id));
+        frag.appendChild(buildMsgEl(m));
+      });
+      el.appendChild(frag);
+      scrollBottom(el, false);
+    }
   }
 
   startChatSync();
   startPresence();
 }
 
-// ========== CHAT SYNC ==========
+// ========== CHAT SYNC (REALTIME) ==========
 function startChatSync() {
   if (chatChannel) { try { sb.removeChannel(chatChannel); } catch (e) {} chatChannel = null; }
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
 
   chatChannel = sb.channel('chat_live_' + Date.now(), { config: { broadcast: { self: false } } })
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, (payload) => {
-      if (!isChatActive || !payload.new) return;
-      const newId = String(payload.new.id);
-      if (seenMsgIds.has(newId)) return;
-      if (currentAccount && payload.new.sender_name === currentAccount.name) {
-        const pend = document.querySelector('[data-pending]');
-        if (pend) {
-          pend.dataset.msgId = newId;
-          seenMsgIds.add(newId);
-          pend.removeAttribute('data-pending');
-          return;
+    .on('postgres_changes', 
+      { event: 'INSERT', schema: 'public', table: 'chat_messages' }, 
+      (payload) => {
+        if (!isChatActive || !payload.new) return;
+        const newId = String(payload.new.id);
+        
+        // Skip kalau udah ada (cegah double)
+        if (seenMsgIds.has(newId)) return;
+        
+        // Skip kalau ini pesan sendiri yang baru dikirim
+        if (currentAccount && payload.new.sender_name === currentAccount.name) {
+          // Cek apakah pesan ini sudah ditambahkan oleh sendMsg()
+          const existing = document.querySelector('[data-msg-id="' + newId + '"]');
+          if (existing) return;
+        }
+        
+        // Tambahkan pesan baru
+        appendMsg(payload.new, true);
+        
+        // Auto delivered & read untuk pesan masuk
+        if (currentAccount && payload.new.sender_name !== currentAccount.name) {
+          updateMessageStatusDirect(payload.new.id, 'delivered');
+          // Auto read kalau tab chat aktif
+          if (document.getElementById('tabChat').classList.contains('active-tab')) {
+            updateMessageStatusDirect(payload.new.id, 'read');
+          }
         }
       }
-      appendMsg(payload.new, true);
-
-      // Auto update status to delivered for incoming messages
-      if (!currentAccount || payload.new.sender_name !== currentAccount.name) {
-        updateMessageStatus(payload.new.id, 'delivered');
+    )
+    .on('postgres_changes', 
+      { event: 'DELETE', schema: 'public', table: 'chat_messages' }, 
+      (payload) => {
+        if (!payload.old || !payload.old.id) return;
+        const msgEl = document.querySelector('[data-msg-id="' + payload.old.id + '"]');
+        if (msgEl) msgEl.remove();
+        seenMsgIds.delete(String(payload.old.id));
       }
-    })
-    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'chat_messages' }, (payload) => {
-      if (!payload.old || !payload.old.id) return;
-      const el2 = document.querySelector('[data-msg-id="' + payload.old.id + '"]');
-      if (el2) el2.remove();
-      seenMsgIds.delete(String(payload.old.id));
-    })
-    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'message_status' }, (payload) => {
-      if (!payload.new || !isChatActive) return;
-      // Update icon if status changed
-      const iconEl = document.querySelector('[data-status-msg-id="' + payload.new.message_id + '"]');
-      if (iconEl) {
-        getStatusIcon(payload.new.message_id).then(iconHtml => {
-          iconEl.innerHTML = iconHtml;
-        });
+    )
+    .on('postgres_changes', 
+      { event: '*', schema: 'public', table: 'message_status' }, 
+      (payload) => {
+        if (!payload.new || !isChatActive) return;
+        // Update icon status secara realtime
+        const iconEl = document.querySelector('[data-status-msg-id="' + payload.new.message_id + '"]');
+        if (iconEl) {
+          getStatusIcon(payload.new.message_id).then(iconHtml => {
+            iconEl.innerHTML = iconHtml;
+          });
+        }
       }
-    })
+    )
     .subscribe();
-
-  pollTimer = setInterval(async () => {
-    if (!isChatActive || !chatLoaded) return;
-    const res = await sb.from('chat_messages').select('*').order('created_at', { ascending: false }).limit(20);
-    if (res.error || !res.data) return;
-    res.data.slice().reverse().forEach(m => {
-      if (m.id && !seenMsgIds.has(String(m.id))) appendMsg(m, false);
-    });
-  }, 4000);
 }
 
-// ========== MESSAGE STATUS FUNCTIONS ==========
-async function updateMessageStatus(msgId, status) {
+// ========== MESSAGE STATUS FUNCTIONS (DIRECT - NO DELAY) ==========
+async function updateMessageStatusDirect(msgId, status) {
   if (!currentAccount || !otherUser) return;
   
   try {
@@ -558,7 +580,7 @@ async function updateMessageStatus(msgId, status) {
       updateData.read_at = new Date().toISOString();
     }
 
-    // Upsert
+    // Upsert langsung
     const { data: existing } = await sb
       .from('message_status')
       .select('id')
@@ -570,16 +592,23 @@ async function updateMessageStatus(msgId, status) {
     } else {
       await sb.from('message_status').insert([updateData]);
     }
+
+    // Update icon langsung
+    const iconEl = document.querySelector('[data-status-msg-id="' + msgId + '"]');
+    if (iconEl) {
+      const iconHtml = await getStatusIcon(msgId);
+      iconEl.innerHTML = iconHtml;
+    }
   } catch (err) {
     console.error('Update status error:', err);
   }
 }
 
-async function markMessagesAsRead() {
+async function markAllMessagesAsRead() {
   if (!currentAccount || !otherUser) return;
   
   try {
-    // Get all unread messages from other user
+    // Ambil semua pesan dari otherUser yang belum read
     const { data: messages } = await sb
       .from('chat_messages')
       .select('id')
@@ -587,9 +616,9 @@ async function markMessagesAsRead() {
       .order('created_at', { ascending: false })
       .limit(50);
 
-    if (messages) {
+    if (messages && messages.length > 0) {
       for (const msg of messages) {
-        await updateMessageStatus(msg.id, 'read');
+        await updateMessageStatusDirect(msg.id, 'read');
       }
     }
   } catch (err) {
@@ -597,14 +626,13 @@ async function markMessagesAsRead() {
   }
 }
 
-// ========== PRESENCE SYSTEM ==========
+// ========== PRESENCE SYSTEM (REALTIME) ==========
 async function startPresence() {
   if (!currentAccount) return;
 
-  // Determine other user
   otherUser = currentAccount.name === "Jef'z" ? "Ndifaa" : "Jef'z";
 
-  // Set current user as online
+  // Set online langsung
   try {
     await sb.rpc('update_presence', {
       p_username: currentAccount.name,
@@ -614,29 +642,36 @@ async function startPresence() {
     console.error('Update presence error:', err);
   }
 
-  // Subscribe to presence changes
+  // Subscribe to presence changes - REALTIME
   if (presenceChannel) { try { sb.removeChannel(presenceChannel); } catch (e) {} }
 
   presenceChannel = sb.channel('presence_' + Date.now())
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'user_presence' }, (payload) => {
-      if (payload.new && payload.new.username === otherUser) {
-        updateOnlineStatus(payload.new);
+    .on('postgres_changes', 
+      { event: '*', schema: 'public', table: 'user_presence', filter: 'username=eq.' + otherUser }, 
+      (payload) => {
+        if (payload.new && payload.new.username === otherUser) {
+          updateOnlineStatus(payload.new);
+        }
       }
-    })
+    )
     .subscribe();
 
-  // Initial fetch
-  fetchInitialPresence();
+  // Initial fetch langsung
+  await fetchInitialPresence();
 
-  // Poll presence every 10 seconds
-  setInterval(fetchInitialPresence, 10000);
+  // Poll every 1 second for backup (realtime subscription should handle most updates)
+  if (presenceInterval) clearInterval(presenceInterval);
+  presenceInterval = setInterval(fetchInitialPresence, 1000);
 
   // Set offline on page unload
   window.addEventListener('beforeunload', () => {
     if (currentAccount) {
-      navigator.sendBeacon
-        ? navigator.sendBeacon('/api/presence', JSON.stringify({ username: currentAccount.name, online: false }))
-        : sb.rpc('update_presence', { p_username: currentAccount.name, p_is_online: false });
+      try {
+        sb.rpc('update_presence', { 
+          p_username: currentAccount.name, 
+          p_is_online: false 
+        });
+      } catch(e) {}
     }
   });
 }
@@ -661,7 +696,7 @@ async function fetchInitialPresence() {
 
 function updateOnlineStatus(presenceData) {
   const onlineEl = document.getElementById('topbarOnline');
-  if (!onlineEl) return;
+  if (!onlineEl || !otherUser) return;
 
   onlineEl.classList.add('show');
   
@@ -690,16 +725,16 @@ function updateOnlineStatus(presenceData) {
       lastSeenText = lastSeen.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
     }
 
-    onlineEl.innerHTML = 'Last seen ' + lastSeenText;
+    onlineEl.innerHTML = '<span class="topbar-online-dot"></span>' + esc(otherUser) + ' · ' + lastSeenText;
   }
 
-  // Mark incoming messages as read when chat tab is active
+  // Auto read messages when chat is open
   if (document.getElementById('tabChat').classList.contains('active-tab')) {
-    markMessagesAsRead();
+    markAllMessagesAsRead();
   }
 }
 
-// ========== SEND MESSAGE ==========
+// ========== SEND MESSAGE (NO DOUBLE) ==========
 let isSending = false;
 
 async function sendMsg() {
@@ -727,55 +762,37 @@ async function sendMsg() {
     insertData.reply_to_text = replyTarget.message;
   }
 
-  const fakeMsg = {
-    message: msg,
-    sender_name: currentAccount.name,
-    sender_role: currentAccount.role,
-    user_id: USER_ID,
-    created_at: new Date().toISOString(),
-    reply_to_name: insertData.reply_to_name,
-    reply_to_text: insertData.reply_to_text
-  };
-
   clearReplyBanner();
 
-  const el = document.getElementById('chatList');
-  const ph = el.querySelector('.state-msg');
-  if (ph) el.innerHTML = '';
-
-  const msgEl = buildMsgEl(fakeMsg);
-  msgEl.dataset.pending = '1';
-  el.appendChild(msgEl);
-  scrollBottom(el, true);
-
+  // Insert ke database
   const res = await sb.from('chat_messages').insert([insertData]);
-  isSending = false;
-
+  
   if (res.error) {
-    const pend = el.querySelector('[data-pending]');
-    if (pend) pend.remove();
     toast('Gagal kirim', false);
     input.value = msg;
+    isSending = false;
     return;
   }
 
-  // Update status to sent
+  // Append langsung dari response
   if (res.data && res.data[0]) {
-    const msgId = res.data[0].id;
-    await updateMessageStatus(msgId, 'sent');
+    const newMsg = res.data[0];
+    const msgId = String(newMsg.id);
+    
+    if (!seenMsgIds.has(msgId)) {
+      seenMsgIds.add(msgId);
+      const el = document.getElementById('chatList');
+      const ph = el.querySelector('.state-msg');
+      if (ph) el.innerHTML = '';
+      el.appendChild(buildMsgEl(newMsg));
+      scrollBottom(el, true);
+    }
+    
+    // Update status to sent langsung
+    await updateMessageStatusDirect(newMsg.id, 'sent');
   }
 
-  setTimeout(async () => {
-    const pend = el.querySelector('[data-pending]');
-    if (!pend) return;
-    const r = await sb.from('chat_messages').select('id').order('created_at', { ascending: false }).limit(1);
-    if (r.data && r.data[0]) {
-      const newId = String(r.data[0].id);
-      if (!seenMsgIds.has(newId)) seenMsgIds.add(newId);
-      pend.dataset.msgId = newId;
-      pend.removeAttribute('data-pending');
-    }
-  }, 800);
+  isSending = false;
 }
 
 // ========== CHAT UPLOAD ==========
@@ -906,7 +923,7 @@ async function delSelectedMsgs() {
   toast(ids.length === 1 ? 'Pesan dihapus' : ids.length + ' pesan dihapus');
 }
 
-// ========== GALLERY (dari chat.js) ==========
+// ========== GALLERY ==========
 let galleryItems = [];
 let galleryLoaded = false;
 let lbCurrentIdx = -1;
@@ -1200,7 +1217,6 @@ function closeLightbox() {
   if (wrap) { wrap.style.opacity = ''; wrap.style.transform = ''; wrap.style.transition = ''; }
 }
 
-// Lightbox swipe
 (function() {
   document.addEventListener('DOMContentLoaded', () => {
     const lb = document.getElementById('lightbox');
@@ -1226,3 +1242,11 @@ function closeLightbox() {
     });
   });
 })();
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', () => {
+  if (presenceInterval) clearInterval(presenceInterval);
+  if (chatChannel) { try { sb.removeChannel(chatChannel); } catch (e) {} }
+  if (presenceChannel) { try { sb.removeChannel(presenceChannel); } catch (e) {} }
+  if (pollTimer) clearInterval(pollTimer);
+});
