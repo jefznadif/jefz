@@ -108,7 +108,21 @@ body {
   font-size:15px; font-weight:700; color:white; flex-shrink:0;
 }
 .topbar-title { font-size:17px; font-weight:600; color:var(--text); letter-spacing:-0.3px; line-height:1.2; }
+.topbar-status-row { display:flex; align-items:center; gap:6px; }
 .topbar-user { font-size:11px; color:var(--text3); }
+.topbar-online {
+  font-size:11px; font-weight:500; display:none; align-items:center; gap:4px;
+}
+.topbar-online.show { display:flex; }
+.topbar-online.online { color:#34c759; }
+.topbar-online.offline { color:var(--text3); }
+.topbar-online-dot {
+  width:7px; height:7px; border-radius:50%; flex-shrink:0;
+}
+.topbar-online.online .topbar-online-dot {
+  background:#34c759; box-shadow:0 0 0 2px rgba(52,199,89,0.3);
+}
+.topbar-online.offline .topbar-online-dot { background:var(--text3); }
 .topbar-right { display:flex; gap:8px; align-items:center; }
 .theme-btn {
   display:flex; align-items:center; gap:5px;
@@ -334,11 +348,32 @@ body.dark .reply-preview { background:rgba(255,255,255,0.08); }
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
 
-.btime {
-  float:right; font-size:10px; color:var(--text3);
-  margin-left:6px; margin-bottom:-2px; position:relative;
-  top:3px; line-height:1; white-space:nowrap; pointer-events:none; padding-top:2px;
+/* ===== MESSAGE STATUS ICONS (iOS Style) ===== */
+.msg-status-icons {
+  display:inline-flex; align-items:center; gap:-2px; flex-shrink:0;
 }
+.msg-status-icons svg {
+  width:14px; height:14px; flex-shrink:0;
+}
+.msg-status-icons .status-pending {
+  color:var(--text3); stroke:var(--text3);
+}
+.msg-status-icons .status-sent {
+  color:var(--text3); stroke:var(--text3);
+}
+.msg-status-icons .status-delivered {
+  color:var(--text3); stroke:var(--text3);
+}
+.msg-status-icons .status-read {
+  color:#34c759; stroke:#34c759;
+}
+.btime {
+  font-size:10px; color:var(--text3);
+  position:static; float:none; margin:0; padding:0; top:0;
+  line-height:1; white-space:nowrap; pointer-events:none;
+}
+.mine .btime { margin-right:0; }
+
 .bubble-img {
   max-width:220px; max-height:220px; border-radius:10px;
   cursor:pointer; object-fit:cover; display:block;
