@@ -16,9 +16,14 @@ let selectionModeActive = false;
 // Message action menu
 let activeMsgActionMenu = null;
 
+// Presence
+let presenceChannel = null;
+let otherUser = null;
+let onlineStatus = false;
+
 // ========== EMOJI DATA ==========
 const EMOJI_CATEGORIES = [
-  { icon:'😀', label:'Smileys', emojis:['😀','😃','🫪','🫠','🫣','🤓','🥸','🙂‍↕️','🙂‍↔️','🫨','😄','😁','😆','😅','🤣','😂','🙂','🙃','😉','😊','😇','🥰','😍','🤩','😘','😗','☺️','😚','😙','🥲','😋','😛','😜','🤪','😝','🤑','🤗','🤭','🤫','🤔','🤐','🤨','😐','😑','😶','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🤧','🥵','🥶','🥴','😵','💫','🤯','🤠','🥳','🥸','😎','🤓','🧐','😕','😟','🙁','☹️','😮','😯','😲','😳','🥺','😦','😧','😨','😰','😥','😢','😭','😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡','😠','🤬','😈','👿','💀','☠️','💩','🤡','👹','👺','👻','👽','👾','🤖'] },
+  { icon:'😀', label:'Smileys', emojis:['😀','😃','😄','😁','😆','😅','🤣','😂','🙂','🙃','😉','😊','😇','🥰','😍','🤩','😘','😗','☺️','😚','😙','🥲','😋','😛','😜','🤪','😝','🤑','🤗','🤭','🤫','🤔','🤐','🤨','😐','😑','😶','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🤧','🥵','🥶','🥴','😵','💫','🤯','🤠','🥳','🥸','😎','🤓','🧐','😕','😟','🙁','☹️','😮','😯','😲','😳','🥺','😦','😧','😨','😰','😥','😢','😭','😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡','😠','🤬','😈','👿','💀','☠️','💩','🤡','👹','👺','👻','👽','👾','🤖'] },
   { icon:'❤️', label:'Hearts', emojis:['❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','💟'] },
   { icon:'👋', label:'People', emojis:['👋','🤚','🖐️','✋','🖖','👌','🤌','🤏','✌️','🤞','🤟','🤘','🤙','👈','👉','👆','🖕','👇','☝️','👍','👎','✊','👊','🤛','🤜','👏','🙌','👐','🤲','🤝','🙏','✍️','💅','🤳','💪','🦾','🦵','🦿','🦶','👂','🦻','👃','🧠','🦷','🦴','👀','👁️','👅','👄','💋','🩸'] },
   { icon:'🐱', label:'Animals', emojis:['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🙈','🙉','🙊','🐔','🐧','🐦','🐤','🦆','🦅','🦉','🦇','🐺','🐗','🐴','🦄','🐝','🦋','🐌','🐞','🐜','🦟','🕷️','🦂','🐢','🐍','🦎','🐙','🦑','🦐','🦀','🐡','🐠','🐟','🐬','🐳','🦈'] },
@@ -216,6 +221,38 @@ async function delMsg(id) {
   toast('Pesan dihapus');
 }
 
+// ========== STATUS ICONS ==========
+async function getStatusIcon(msgId) {
+  try {
+    const { data, error } = await sb
+      .from('message_status')
+      .select('status')
+      .eq('message_id', msgId)
+      .maybeSingle();
+    
+    if (error || !data) {
+      // No status yet = pending (clock icon)
+      return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" class="status-pending"><circle cx="8" cy="8" r="6.5"/><polyline points="8 4.5 8 8 10.5 10"/></svg>';
+    }
+
+    switch(data.status) {
+      case 'sent':
+        // Single check ✓
+        return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="status-sent"><polyline points="3.5 8 6.5 11 12.5 4.5"/></svg>';
+      case 'delivered':
+        // Double check ✓✓
+        return '<svg viewBox="0 0 18 16" fill="none" stroke="currentColor" stroke-width="2" class="status-delivered"><polyline points="2 8 5 11 10.5 5"/><polyline points="6.5 8 9.5 11 15 5"/></svg>';
+      case 'read':
+        // Double check blue ✓✓
+        return '<svg viewBox="0 0 18 16" fill="none" stroke="currentColor" stroke-width="2" class="status-read"><polyline points="2 8 5 11 10.5 5"/><polyline points="6.5 8 9.5 11 15 5"/></svg>';
+      default:
+        return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" class="status-pending"><circle cx="8" cy="8" r="6.5"/><polyline points="8 4.5 8 8 10.5 10"/></svg>';
+    }
+  } catch (err) {
+    return '';
+  }
+}
+
 // ========== BUILD MESSAGE ELEMENT ==========
 function buildMsgEl(m) {
   const isMe = currentAccount && m.sender_name === currentAccount.name;
@@ -275,10 +312,29 @@ function buildMsgEl(m) {
     bubble.appendChild(document.createTextNode(msgContent));
   }
 
+  // Time + Status container
+  const timeStatusContainer = document.createElement('span');
+  timeStatusContainer.style.cssText = 'float:right;margin-left:5px;margin-bottom:-2px;position:relative;top:3px;line-height:1;white-space:nowrap;pointer-events:none;padding-top:2px;display:inline-flex;align-items:center;gap:3px;';
+
   const btime = document.createElement('span');
   btime.className = 'btime';
   btime.textContent = fmtTime(m.created_at);
-  bubble.appendChild(btime);
+  timeStatusContainer.appendChild(btime);
+
+  // Status icons (hanya untuk pesan sendiri)
+  if (isMe && m.id) {
+    const statusIcons = document.createElement('span');
+    statusIcons.className = 'msg-status-icons';
+    statusIcons.dataset.statusMsgId = m.id;
+    
+    getStatusIcon(m.id).then(iconHtml => {
+      statusIcons.innerHTML = iconHtml;
+    });
+    
+    timeStatusContainer.appendChild(statusIcons);
+  }
+
+  bubble.appendChild(timeStatusContainer);
 
   const blockInner = document.createElement('div');
   blockInner.className = 'msg-block-inner';
@@ -428,6 +484,7 @@ async function initChat() {
   }
 
   startChatSync();
+  startPresence();
 }
 
 // ========== CHAT SYNC ==========
@@ -450,12 +507,27 @@ function startChatSync() {
         }
       }
       appendMsg(payload.new, true);
+
+      // Auto update status to delivered for incoming messages
+      if (!currentAccount || payload.new.sender_name !== currentAccount.name) {
+        updateMessageStatus(payload.new.id, 'delivered');
+      }
     })
     .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'chat_messages' }, (payload) => {
       if (!payload.old || !payload.old.id) return;
       const el2 = document.querySelector('[data-msg-id="' + payload.old.id + '"]');
       if (el2) el2.remove();
       seenMsgIds.delete(String(payload.old.id));
+    })
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'message_status' }, (payload) => {
+      if (!payload.new || !isChatActive) return;
+      // Update icon if status changed
+      const iconEl = document.querySelector('[data-status-msg-id="' + payload.new.message_id + '"]');
+      if (iconEl) {
+        getStatusIcon(payload.new.message_id).then(iconHtml => {
+          iconEl.innerHTML = iconHtml;
+        });
+      }
     })
     .subscribe();
 
@@ -467,6 +539,164 @@ function startChatSync() {
       if (m.id && !seenMsgIds.has(String(m.id))) appendMsg(m, false);
     });
   }, 4000);
+}
+
+// ========== MESSAGE STATUS FUNCTIONS ==========
+async function updateMessageStatus(msgId, status) {
+  if (!currentAccount || !otherUser) return;
+  
+  try {
+    const updateData = {
+      message_id: msgId,
+      recipient_name: otherUser,
+      status: status
+    };
+    
+    if (status === 'delivered') {
+      updateData.delivered_at = new Date().toISOString();
+    } else if (status === 'read') {
+      updateData.read_at = new Date().toISOString();
+    }
+
+    // Upsert
+    const { data: existing } = await sb
+      .from('message_status')
+      .select('id')
+      .eq('message_id', msgId)
+      .maybeSingle();
+
+    if (existing) {
+      await sb.from('message_status').update(updateData).eq('message_id', msgId);
+    } else {
+      await sb.from('message_status').insert([updateData]);
+    }
+  } catch (err) {
+    console.error('Update status error:', err);
+  }
+}
+
+async function markMessagesAsRead() {
+  if (!currentAccount || !otherUser) return;
+  
+  try {
+    // Get all unread messages from other user
+    const { data: messages } = await sb
+      .from('chat_messages')
+      .select('id')
+      .eq('sender_name', otherUser)
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (messages) {
+      for (const msg of messages) {
+        await updateMessageStatus(msg.id, 'read');
+      }
+    }
+  } catch (err) {
+    console.error('Mark read error:', err);
+  }
+}
+
+// ========== PRESENCE SYSTEM ==========
+async function startPresence() {
+  if (!currentAccount) return;
+
+  // Determine other user
+  otherUser = currentAccount.name === "Jef'z" ? "Ndifaa" : "Jef'z";
+
+  // Set current user as online
+  try {
+    await sb.rpc('update_presence', {
+      p_username: currentAccount.name,
+      p_is_online: true
+    });
+  } catch (err) {
+    console.error('Update presence error:', err);
+  }
+
+  // Subscribe to presence changes
+  if (presenceChannel) { try { sb.removeChannel(presenceChannel); } catch (e) {} }
+
+  presenceChannel = sb.channel('presence_' + Date.now())
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'user_presence' }, (payload) => {
+      if (payload.new && payload.new.username === otherUser) {
+        updateOnlineStatus(payload.new);
+      }
+    })
+    .subscribe();
+
+  // Initial fetch
+  fetchInitialPresence();
+
+  // Poll presence every 10 seconds
+  setInterval(fetchInitialPresence, 10000);
+
+  // Set offline on page unload
+  window.addEventListener('beforeunload', () => {
+    if (currentAccount) {
+      navigator.sendBeacon
+        ? navigator.sendBeacon('/api/presence', JSON.stringify({ username: currentAccount.name, online: false }))
+        : sb.rpc('update_presence', { p_username: currentAccount.name, p_is_online: false });
+    }
+  });
+}
+
+async function fetchInitialPresence() {
+  if (!otherUser) return;
+  
+  try {
+    const { data, error } = await sb
+      .from('user_presence')
+      .select('*')
+      .eq('username', otherUser)
+      .maybeSingle();
+
+    if (!error && data) {
+      updateOnlineStatus(data);
+    }
+  } catch (err) {
+    console.error('Fetch presence error:', err);
+  }
+}
+
+function updateOnlineStatus(presenceData) {
+  const onlineEl = document.getElementById('topbarOnline');
+  if (!onlineEl) return;
+
+  onlineEl.classList.add('show');
+  
+  if (presenceData.is_online) {
+    onlineEl.className = 'topbar-online show online';
+    onlineEl.innerHTML = '<span class="topbar-online-dot"></span>Online';
+  } else {
+    onlineEl.className = 'topbar-online show offline';
+    const lastSeen = presenceData.last_seen ? new Date(presenceData.last_seen) : new Date();
+    const now = new Date();
+    const diffMs = now - lastSeen;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    let lastSeenText;
+    if (diffMins < 1) {
+      lastSeenText = 'Baru saja';
+    } else if (diffMins < 60) {
+      lastSeenText = diffMins + ' mnt lalu';
+    } else if (diffHours < 24) {
+      lastSeenText = diffHours + ' jam lalu';
+    } else if (diffDays < 7) {
+      lastSeenText = diffDays + ' hari lalu';
+    } else {
+      lastSeenText = lastSeen.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
+    }
+
+    onlineEl.innerHTML = 'Last seen ' + lastSeenText;
+  }
+
+  // Mark incoming messages as read when chat tab is active
+  if (document.getElementById('tabChat').classList.contains('active-tab')) {
+    markMessagesAsRead();
+  }
 }
 
 // ========== SEND MESSAGE ==========
@@ -527,6 +757,12 @@ async function sendMsg() {
     toast('Gagal kirim', false);
     input.value = msg;
     return;
+  }
+
+  // Update status to sent
+  if (res.data && res.data[0]) {
+    const msgId = res.data[0].id;
+    await updateMessageStatus(msgId, 'sent');
   }
 
   setTimeout(async () => {
