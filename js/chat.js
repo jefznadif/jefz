@@ -1,25 +1,26 @@
 // ========== CHAT MODULE ==========
 
-let chatChannel = null;
-let isChatActive = false;
-let chatLoaded = false;
-let seenMsgIds = new Set();
-let pollTimer = null;
+let chatChannel      = null;
+let presenceChannel  = null;
+let isChatActive     = false;
+let chatLoaded       = false;
+let seenMsgIds       = new Set();
 
-let replyTarget = null;
-let emojiPickerOpen = false;
-
-// Multi-select state
-let selectedMsgIds = new Set();
-let selectionModeActive = false;
-
-// Message action menu
+let replyTarget         = null;
+let emojiPickerOpen     = false;
 let activeMsgActionMenu = null;
 
+// Multi-select
+let selectedMsgIds     = new Set();
+let selectionModeActive = false;
+
 // Presence
-let presenceChannel = null;
-let otherUser = null;
+let otherUser        = null;
 let presenceInterval = null;
+
+// Typing
+let typingTimeout    = null;
+let isTyping         = false;
 
 // ========== HELPERS ==========
 function esc(s) {
@@ -41,6 +42,56 @@ function scrollBottom(el, smooth) {
   requestAnimationFrame(() => {
     el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'instant' });
   });
+}
+
+// ========== TYPING INDICATOR ==========
+function ensureTypingIndicator() {
+  let el = document.getElementById('typingIndicator');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'typingIndicator';
+    el.className = 'typing-indicator';
+    el.style.display = 'none';
+    el.innerHTML =
+      '<div class="typing-bubble">' +
+        '<span class="typing-name" id="typingName"></span>' +
+        '<span class="typing-dots"><span></span><span></span><span></span></span>' +
+      '</div>';
+    const chatList = document.getElementById('chatList');
+    if (chatList && chatList.parentNode) {
+      chatList.parentNode.insertBefore(el, chatList.nextSibling);
+    }
+  }
+  return el;
+}
+
+function showTypingIndicator(name) {
+  const el = ensureTypingIndicator();
+  document.getElementById('typingName').textContent = name + ' sedang mengetik';
+  el.style.display = 'flex';
+  const chatList = document.getElementById('chatList');
+  scrollBottom(chatList, true);
+}
+
+function hideTypingIndicator() {
+  const el = document.getElementById('typingIndicator');
+  if (el) el.style.display = 'none';
+}
+
+// Handle self typing broadcast
+function handleTypingInput() {
+  if (!currentAccount) return;
+
+  if (!isTyping) {
+    isTyping = true;
+    sb.rpc('update_typing', { p_username: currentAccount.name, p_is_typing: true }).catch(() => {});
+  }
+
+  clearTimeout(typingTimeout);
+  typingTimeout = setTimeout(() => {
+    isTyping = false;
+    sb.rpc('update_typing', { p_username: currentAccount.name, p_is_typing: false }).catch(() => {});
+  }, 2000);
 }
 
 // ========== EMOJI DATA ==========
@@ -109,7 +160,7 @@ function buildEmojiPicker() {
   return panel;
 }
 
-function initEmojiSwipe(panel, tabsEl) {
+function initEmojiSwipe(panel) {
   let startX = 0, startY = 0, swiping = false;
   panel.addEventListener('touchstart', (e) => {
     startX = e.touches[0].clientX;
@@ -126,8 +177,8 @@ function initEmojiSwipe(panel, tabsEl) {
     const dx = e.changedTouches[0].clientX - startX;
     if (Math.abs(dx) < 50) return;
     const activeCat = document.querySelector('.emoji-cat-tab.active');
-    const allCats = Array.from(document.querySelectorAll('.emoji-cat-tab'));
-    const idx = allCats.indexOf(activeCat);
+    const allCats   = Array.from(document.querySelectorAll('.emoji-cat-tab'));
+    const idx  = allCats.indexOf(activeCat);
     const next = dx < 0 ? Math.min(idx + 1, allCats.length - 1) : Math.max(idx - 1, 0);
     if (next !== idx) allCats[next].click();
     swiping = false;
@@ -138,9 +189,8 @@ function insertEmoji(em) {
   const input = document.getElementById('chatInput');
   if (!input) return;
   const start = input.selectionStart;
-  const end = input.selectionEnd;
-  const val = input.value;
-  input.value = val.slice(0, start) + em + val.slice(end);
+  const end   = input.selectionEnd;
+  input.value = input.value.slice(0, start) + em + input.value.slice(end);
   const pos = start + em.length;
   input.setSelectionRange(pos, pos);
   input.focus();
@@ -209,8 +259,8 @@ function showMsgActionMenu(msgId, senderName, message, anchorEl) {
     menu.appendChild(delBtn);
   }
 
-  const rect = anchorEl.getBoundingClientRect();
-  const isMe = currentAccount && senderName === currentAccount.name;
+  const rect  = anchorEl.getBoundingClientRect();
+  const isMe  = currentAccount && senderName === currentAccount.name;
   menu.style.position = 'fixed';
   menu.style.top = (rect.bottom + 4) + 'px';
   if (isMe) menu.style.right = (window.innerWidth - rect.right) + 'px';
@@ -228,10 +278,24 @@ async function delMsg(id) {
   if (res.error) { toast('Gagal hapus', false); return; }
   const el = document.querySelector('[data-msg-id="' + id + '"]');
   if (el) el.remove();
+  seenMsgIds.delete(String(id));
   toast('Pesan dihapus');
 }
 
 // ========== STATUS ICONS ==========
+function getStatusIconHtml(status) {
+  switch (status) {
+    case 'sent':
+      return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="status-sent"><polyline points="3.5 8 6.5 11 12.5 4.5"/></svg>';
+    case 'delivered':
+      return '<svg viewBox="0 0 20 16" fill="none" stroke="currentColor" stroke-width="2" class="status-delivered"><polyline points="2 8 5 11 10.5 5"/><polyline points="7.5 8 10.5 11 16 5"/></svg>';
+    case 'read':
+      return '<svg viewBox="0 0 20 16" fill="none" stroke="currentColor" stroke-width="2" class="status-read"><polyline points="2 8 5 11 10.5 5"/><polyline points="7.5 8 10.5 11 16 5"/></svg>';
+    default:
+      return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" class="status-pending"><circle cx="8" cy="8" r="6.5"/><polyline points="8 4.5 8 8 10.5 10"/></svg>';
+  }
+}
+
 async function getStatusIcon(msgId) {
   try {
     const { data, error } = await sb
@@ -239,53 +303,31 @@ async function getStatusIcon(msgId) {
       .select('status')
       .eq('message_id', msgId)
       .maybeSingle();
-    
-    if (error || !data) {
-      return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" class="status-pending"><circle cx="8" cy="8" r="6.5"/><polyline points="8 4.5 8 8 10.5 10"/></svg>';
-    }
-
-    switch(data.status) {
-      case 'sent':
-        return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="status-sent"><polyline points="3.5 8 6.5 11 12.5 4.5"/></svg>';
-      case 'delivered':
-        return '<svg viewBox="0 0 18 16" fill="none" stroke="currentColor" stroke-width="2" class="status-delivered"><polyline points="2 8 5 11 10.5 5"/><polyline points="6.5 8 9.5 11 15 5"/></svg>';
-      case 'read':
-        return '<svg viewBox="0 0 18 16" fill="none" stroke="currentColor" stroke-width="2" class="status-read"><polyline points="2 8 5 11 10.5 5"/><polyline points="6.5 8 9.5 11 15 5"/></svg>';
-      default:
-        return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" class="status-pending"><circle cx="8" cy="8" r="6.5"/><polyline points="8 4.5 8 8 10.5 10"/></svg>';
-    }
-  } catch (err) {
-    return '';
+    if (error || !data) return getStatusIconHtml('pending');
+    return getStatusIconHtml(data.status);
+  } catch {
+    return getStatusIconHtml('pending');
   }
-}
-
-// Update status icon di semua pesan yang sudah ada
-function refreshAllStatusIcons() {
-  document.querySelectorAll('[data-status-msg-id]').forEach(async (iconEl) => {
-    const msgId = iconEl.dataset.statusMsgId;
-    const iconHtml = await getStatusIcon(msgId);
-    iconEl.innerHTML = iconHtml;
-  });
 }
 
 // ========== BUILD MESSAGE ELEMENT ==========
 function buildMsgEl(m) {
-  const isMe = currentAccount && m.sender_name === currentAccount.name;
-  const nameColor = m.sender_name === "Jef'z" ? '#3d5afe' : '#e91e8c';
-  const roleTag = m.sender_role === 'admin' ? ' 👑' : '';
+  const isMe      = currentAccount && m.sender_name === currentAccount.name;
+  const nameColor = m.sender_name === "Jef'z" ? '#007aff' : '#e91e8c';
+  const roleTag   = m.sender_role === 'admin' ? ' 👑' : '';
 
   const d = document.createElement('div');
   d.className = 'msg-row ' + (isMe ? 'mine' : 'theirs');
   if (m.id) d.dataset.msgId = String(m.id);
 
   const msgContent = m.message || '';
-  const isImgMsg = msgContent.startsWith('[img]');
-  const isVidMsg = msgContent.startsWith('[video]');
-  const mediaUrl = (isImgMsg || isVidMsg) ? msgContent.slice(isImgMsg ? 5 : 7) : null;
+  const isImgMsg   = msgContent.startsWith('[img]');
+  const isVidMsg   = msgContent.startsWith('[video]');
+  const mediaUrl   = (isImgMsg || isVidMsg) ? msgContent.slice(isImgMsg ? 5 : 7) : null;
 
   const actionBtn = document.createElement('button');
   actionBtn.className = 'bubble-action-btn';
-  actionBtn.title = 'Opsi';
+  actionBtn.title     = 'Opsi';
   actionBtn.textContent = '⋮';
   actionBtn.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -295,7 +337,7 @@ function buildMsgEl(m) {
 
   let replyEl = null;
   if (m.reply_to_name && m.reply_to_text) {
-    const rColor = m.reply_to_name === "Jef'z" ? '#3d5afe' : '#e91e8c';
+    const rColor = m.reply_to_name === "Jef'z" ? '#007aff' : '#e91e8c';
     let rPreview = m.reply_to_text.length > 50 ? m.reply_to_text.slice(0, 50) + '…' : m.reply_to_text;
     if (rPreview.startsWith('[img]') || rPreview.startsWith('[video]')) {
       rPreview = rPreview.startsWith('[img]') ? '🖼 Foto' : '🎬 Video';
@@ -320,36 +362,36 @@ function buildMsgEl(m) {
     bubble.appendChild(img);
   } else if (isVidMsg && mediaUrl) {
     const vid = document.createElement('video');
-    vid.src = mediaUrl; vid.className = 'bubble-vid'; vid.preload = 'metadata';
-    vid.controls = true; vid.playsInline = true;
+    vid.src = mediaUrl; vid.className = 'bubble-vid';
+    vid.preload = 'metadata'; vid.controls = true; vid.playsInline = true;
     bubble.appendChild(vid);
   } else {
     bubble.appendChild(document.createTextNode(msgContent));
   }
 
-  // Time + Status container
-  const timeStatusContainer = document.createElement('span');
-  timeStatusContainer.style.cssText = 'float:right;margin-left:5px;margin-bottom:-2px;position:relative;top:3px;line-height:1;white-space:nowrap;pointer-events:none;padding-top:2px;display:inline-flex;align-items:center;gap:3px;';
+  // Time + Status
+  const timeStatusWrap = document.createElement('span');
+  timeStatusWrap.style.cssText =
+    'float:right;margin-left:6px;margin-bottom:-2px;position:relative;top:3px;' +
+    'display:inline-flex;align-items:center;gap:3px;pointer-events:none;white-space:nowrap;';
 
   const btime = document.createElement('span');
   btime.textContent = fmtTime(m.created_at);
-  btime.style.cssText = 'font-size:10px;color:var(--text3);position:static;float:none;margin:0;padding:0;top:0;';
-  timeStatusContainer.appendChild(btime);
+  btime.style.cssText = 'font-size:10px;color:var(--text3);';
+  timeStatusWrap.appendChild(btime);
 
-  // Status icons (hanya untuk pesan sendiri)
   if (isMe && m.id) {
-    const statusIcons = document.createElement('span');
-    statusIcons.className = 'msg-status-icons';
-    statusIcons.dataset.statusMsgId = m.id;
-    
-    getStatusIcon(m.id).then(iconHtml => {
-      statusIcons.innerHTML = iconHtml;
-    });
-    
-    timeStatusContainer.appendChild(statusIcons);
+    const statusEl = document.createElement('span');
+    statusEl.className = 'msg-status-icons';
+    statusEl.dataset.statusMsgId = m.id;
+    statusEl.innerHTML = getStatusIconHtml('pending');
+
+    // Async fetch real status
+    getStatusIcon(m.id).then(html => { statusEl.innerHTML = html; });
+    timeStatusWrap.appendChild(statusEl);
   }
 
-  bubble.appendChild(timeStatusContainer);
+  bubble.appendChild(timeStatusWrap);
 
   const blockInner = document.createElement('div');
   blockInner.className = 'msg-block-inner';
@@ -370,6 +412,7 @@ function buildMsgEl(m) {
   const swipeWrap = document.createElement('div');
   swipeWrap.className = 'msg-swipe-wrap';
   swipeWrap.appendChild(msgBlock);
+
   d.appendChild(swipeWrap);
 
   initLongPressSelect(d, m);
@@ -381,15 +424,14 @@ function buildMsgEl(m) {
 function initLongPressSelect(rowEl, m) {
   const bubble = rowEl.querySelector('.bubble');
   if (!bubble) return;
-  let pressTimer = null, moved = false;
-  let touchStartX = 0, touchStartY = 0;
+  let pressTimer = null, moved = false, startX = 0, startY = 0;
 
   bubble.addEventListener('touchstart', (e) => {
     if (e.target.closest('.bubble-action-btn')) return;
     if (selectionModeActive) return;
     moved = false;
-    touchStartX = e.touches[0].clientX;
-    touchStartY = e.touches[0].clientY;
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
     pressTimer = setTimeout(() => {
       if (!moved && m.id) {
         if (navigator.vibrate) navigator.vibrate(40);
@@ -399,8 +441,8 @@ function initLongPressSelect(rowEl, m) {
   }, { passive: true });
 
   bubble.addEventListener('touchmove', (e) => {
-    const dx = Math.abs(e.touches[0].clientX - touchStartX);
-    const dy = Math.abs(e.touches[0].clientY - touchStartY);
+    const dx = Math.abs(e.touches[0].clientX - startX);
+    const dy = Math.abs(e.touches[0].clientY - startY);
     if (dx > 8 || dy > 8) { moved = true; clearTimeout(pressTimer); }
   }, { passive: true });
 
@@ -434,7 +476,7 @@ function initSwipeReply(rowEl, m) {
     if (!swiping && Math.abs(dx) > dy && Math.abs(dx) > 8) swiping = true;
     if (!swiping) return;
     const clamped = Math.min(Math.max(0, dx), 72);
-    swipeWrap.style.transform = 'translateX(' + clamped + 'px)';
+    swipeWrap.style.transform  = 'translateX(' + clamped + 'px)';
     swipeWrap.style.transition = 'none';
     if (clamped >= 60 && !triggered) {
       triggered = true;
@@ -449,7 +491,7 @@ function initSwipeReply(rowEl, m) {
       setReply(m.id, m.sender_name, m.message || '');
     }
     swipeWrap.style.transition = 'transform 0.25s cubic-bezier(0.34,1.56,0.64,1)';
-    swipeWrap.style.transform = 'translateX(0)';
+    swipeWrap.style.transform  = 'translateX(0)';
     swiping = false; triggered = false;
   });
 }
@@ -465,19 +507,34 @@ function appendMsg(m, smooth) {
   if (ph) el.innerHTML = '';
   el.appendChild(buildMsgEl(m));
   const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-  scrollBottom(el, smooth && dist < 300);
+  scrollBottom(el, smooth && dist < 400);
 }
 
 // ========== INIT CHAT ==========
 async function initChat() {
   isChatActive = true;
-  
   const el = document.getElementById('chatList');
-  
+
+  // Pasang listener typing pada input
+  const chatInput = document.getElementById('chatInput');
+  if (chatInput && !chatInput._typingBound) {
+    chatInput._typingBound = true;
+    chatInput.addEventListener('input', () => {
+      autoResize(chatInput);
+      handleTypingInput();
+    });
+    chatInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); }
+    });
+  }
+
   if (!chatLoaded) {
     el.innerHTML = '<p class="state-msg">Memuat...</p>';
-    
-    const res = await sb.from('chat_messages').select('*').order('created_at', { ascending: true });
+    const res = await sb
+      .from('chat_messages')
+      .select('*')
+      .order('created_at', { ascending: true });
+
     if (res.error) {
       el.innerHTML = '<p class="state-msg err">Error: ' + res.error.message + '</p>';
       return;
@@ -491,7 +548,7 @@ async function initChat() {
     } else {
       const frag = document.createDocumentFragment();
       res.data.forEach(m => {
-        if (m.id) seenMsgIds.add(String(m.id));
+        seenMsgIds.add(String(m.id));
         frag.appendChild(buildMsgEl(m));
       });
       el.appendChild(frag);
@@ -499,249 +556,221 @@ async function initChat() {
     }
   }
 
+  ensureTypingIndicator();
   startChatSync();
   startPresence();
 }
 
-// ========== CHAT SYNC (REALTIME) ==========
+// ========== REALTIME SYNC ==========
 function startChatSync() {
-  if (chatChannel) { try { sb.removeChannel(chatChannel); } catch (e) {} chatChannel = null; }
-  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  if (chatChannel) {
+    try { sb.removeChannel(chatChannel); } catch (e) {}
+    chatChannel = null;
+  }
 
-  chatChannel = sb.channel('chat_live_' + Date.now(), { config: { broadcast: { self: false } } })
-    .on('postgres_changes', 
-      { event: 'INSERT', schema: 'public', table: 'chat_messages' }, 
+  chatChannel = sb
+    .channel('chat_realtime_' + Date.now())
+    .on('postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'chat_messages' },
       (payload) => {
         if (!isChatActive || !payload.new) return;
         const newId = String(payload.new.id);
-        
-        // Skip kalau udah ada (cegah double)
+
+        // Skip jika sudah ada (dari sendMsg langsung)
         if (seenMsgIds.has(newId)) return;
-        
-        // Skip kalau ini pesan sendiri yang baru dikirim
-        if (currentAccount && payload.new.sender_name === currentAccount.name) {
-          // Cek apakah pesan ini sudah ditambahkan oleh sendMsg()
-          const existing = document.querySelector('[data-msg-id="' + newId + '"]');
-          if (existing) return;
-        }
-        
-        // Tambahkan pesan baru
+
         appendMsg(payload.new, true);
-        
-        // Auto delivered & read untuk pesan masuk
+
+        // Auto mark delivered/read untuk pesan masuk
         if (currentAccount && payload.new.sender_name !== currentAccount.name) {
-          updateMessageStatusDirect(payload.new.id, 'delivered');
-          // Auto read kalau tab chat aktif
-          if (document.getElementById('tabChat').classList.contains('active-tab')) {
-            updateMessageStatusDirect(payload.new.id, 'read');
-          }
+          const tabActive = document.getElementById('tabChat').classList.contains('active-tab');
+          updateMsgStatus(payload.new.id, tabActive ? 'read' : 'delivered');
         }
       }
     )
-    .on('postgres_changes', 
-      { event: 'DELETE', schema: 'public', table: 'chat_messages' }, 
+    .on('postgres_changes',
+      { event: 'DELETE', schema: 'public', table: 'chat_messages' },
       (payload) => {
         if (!payload.old || !payload.old.id) return;
-        const msgEl = document.querySelector('[data-msg-id="' + payload.old.id + '"]');
-        if (msgEl) msgEl.remove();
+        const el = document.querySelector('[data-msg-id="' + payload.old.id + '"]');
+        if (el) el.remove();
         seenMsgIds.delete(String(payload.old.id));
       }
     )
-    .on('postgres_changes', 
-      { event: '*', schema: 'public', table: 'message_status' }, 
+    .on('postgres_changes',
+      { event: '*', schema: 'public', table: 'message_status' },
       (payload) => {
         if (!payload.new || !isChatActive) return;
-        // Update icon status secara realtime
         const iconEl = document.querySelector('[data-status-msg-id="' + payload.new.message_id + '"]');
-        if (iconEl) {
-          getStatusIcon(payload.new.message_id).then(iconHtml => {
-            iconEl.innerHTML = iconHtml;
-          });
-        }
+        if (iconEl) iconEl.innerHTML = getStatusIconHtml(payload.new.status);
       }
     )
     .subscribe();
 }
 
-// ========== MESSAGE STATUS FUNCTIONS (DIRECT - NO DELAY) ==========
-async function updateMessageStatusDirect(msgId, status) {
-  if (!currentAccount || !otherUser) return;
-  
-  try {
-    const updateData = {
-      message_id: msgId,
-      recipient_name: otherUser,
-      status: status
-    };
-    
-    if (status === 'delivered') {
-      updateData.delivered_at = new Date().toISOString();
-    } else if (status === 'read') {
-      updateData.read_at = new Date().toISOString();
-    }
-
-    // Upsert langsung
-    const { data: existing } = await sb
-      .from('message_status')
-      .select('id')
-      .eq('message_id', msgId)
-      .maybeSingle();
-
-    if (existing) {
-      await sb.from('message_status').update(updateData).eq('message_id', msgId);
-    } else {
-      await sb.from('message_status').insert([updateData]);
-    }
-
-    // Update icon langsung
-    const iconEl = document.querySelector('[data-status-msg-id="' + msgId + '"]');
-    if (iconEl) {
-      const iconHtml = await getStatusIcon(msgId);
-      iconEl.innerHTML = iconHtml;
-    }
-  } catch (err) {
-    console.error('Update status error:', err);
-  }
-}
-
-async function markAllMessagesAsRead() {
-  if (!currentAccount || !otherUser) return;
-  
-  try {
-    // Ambil semua pesan dari otherUser yang belum read
-    const { data: messages } = await sb
-      .from('chat_messages')
-      .select('id')
-      .eq('sender_name', otherUser)
-      .order('created_at', { ascending: false })
-      .limit(50);
-
-    if (messages && messages.length > 0) {
-      for (const msg of messages) {
-        await updateMessageStatusDirect(msg.id, 'read');
-      }
-    }
-  } catch (err) {
-    console.error('Mark read error:', err);
-  }
-}
-
-// ========== PRESENCE SYSTEM (REALTIME) ==========
+// ========== PRESENCE & TYPING REALTIME ==========
 async function startPresence() {
   if (!currentAccount) return;
 
-  otherUser = currentAccount.name === "Jef'z" ? "Ndifaa" : "Jef'z";
+  // Tentukan other user
+  otherUser = currentAccount.name === "Jef'z" ? 'Ndifaa' : "Jef'z";
 
-  // Set online langsung
-  try {
-    await sb.rpc('update_presence', {
-      p_username: currentAccount.name,
-      p_is_online: true
-    });
-  } catch (err) {
-    console.error('Update presence error:', err);
+  // Set self online
+  await sb.rpc('update_presence', { p_username: currentAccount.name, p_is_online: true }).catch(() => {});
+
+  // Stop channel lama
+  if (presenceChannel) {
+    try { sb.removeChannel(presenceChannel); } catch (e) {}
   }
 
-  // Subscribe to presence changes - REALTIME
-  if (presenceChannel) { try { sb.removeChannel(presenceChannel); } catch (e) {} }
-
-  presenceChannel = sb.channel('presence_' + Date.now())
-    .on('postgres_changes', 
-      { event: '*', schema: 'public', table: 'user_presence', filter: 'username=eq.' + otherUser }, 
+  // Subscribe perubahan presence other user (online + typing)
+  presenceChannel = sb
+    .channel('presence_watch_' + Date.now())
+    .on('postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'user_presence',
+        filter: 'username=eq.' + otherUser
+      },
       (payload) => {
-        if (payload.new && payload.new.username === otherUser) {
-          updateOnlineStatus(payload.new);
-        }
+        if (!payload.new) return;
+        updateOnlineStatus(payload.new);
       }
     )
     .subscribe();
 
-  // Initial fetch langsung
-  await fetchInitialPresence();
+  // Fetch initial presence langsung
+  fetchPresence();
 
-  // Poll every 1 second for backup (realtime subscription should handle most updates)
+  // Poll setiap 5 detik sebagai fallback
   if (presenceInterval) clearInterval(presenceInterval);
-  presenceInterval = setInterval(fetchInitialPresence, 1000);
+  presenceInterval = setInterval(fetchPresence, 5000);
 
-  // Set offline on page unload
-  window.addEventListener('beforeunload', () => {
-    if (currentAccount) {
-      try {
-        sb.rpc('update_presence', { 
-          p_username: currentAccount.name, 
-          p_is_online: false 
-        });
-      } catch(e) {}
-    }
-  });
+  // Set offline saat unload
+  window.addEventListener('beforeunload', handleUnload);
 }
 
-async function fetchInitialPresence() {
+function handleUnload() {
+  if (!currentAccount) return;
+  // Pakai sendBeacon agar tidak terputus
+  const url = 'https://cxlvnwbfdbymdoddjqwn.supabase.co/rest/v1/rpc/update_presence';
+  const payload = JSON.stringify({ p_username: currentAccount.name, p_is_online: false });
+  try {
+    navigator.sendBeacon && navigator.sendBeacon(url, new Blob([payload], { type: 'application/json' }));
+    sb.rpc('update_presence', { p_username: currentAccount.name, p_is_online: false });
+    sb.rpc('update_typing',   { p_username: currentAccount.name, p_is_typing: false });
+  } catch (e) {}
+}
+
+async function fetchPresence() {
   if (!otherUser) return;
-  
   try {
     const { data, error } = await sb
       .from('user_presence')
       .select('*')
       .eq('username', otherUser)
       .maybeSingle();
-
-    if (!error && data) {
-      updateOnlineStatus(data);
-    }
-  } catch (err) {
-    console.error('Fetch presence error:', err);
-  }
+    if (!error && data) updateOnlineStatus(data);
+  } catch (e) {}
 }
 
-function updateOnlineStatus(presenceData) {
+function updateOnlineStatus(data) {
   const onlineEl = document.getElementById('topbarOnline');
   if (!onlineEl || !otherUser) return;
 
+  // ===== FIX: tampilkan nama other user, bukan mine =====
   onlineEl.classList.add('show');
-  
-  if (presenceData.is_online) {
+
+  // Cek typing dulu
+  if (data.is_typing) {
+    onlineEl.className = 'topbar-online show typing';
+    onlineEl.innerHTML = '<span class="topbar-online-dot"></span>' + esc(otherUser) + ' mengetik…';
+    return;
+  }
+
+  if (data.is_online) {
     onlineEl.className = 'topbar-online show online';
     onlineEl.innerHTML = '<span class="topbar-online-dot"></span>Online';
   } else {
     onlineEl.className = 'topbar-online show offline';
-    const lastSeen = presenceData.last_seen ? new Date(presenceData.last_seen) : new Date();
-    const now = new Date();
-    const diffMs = now - lastSeen;
-    const diffMins = Math.floor(diffMs / 60000);
+
+    const lastSeen  = data.last_seen ? new Date(data.last_seen) : new Date();
+    const now       = new Date();
+    const diffMs    = now - lastSeen;
+    const diffMins  = Math.floor(diffMs / 60000);
     const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
+    const diffDays  = Math.floor(diffMs / 86400000);
 
-    let lastSeenText;
-    if (diffMins < 1) {
-      lastSeenText = 'Baru saja';
-    } else if (diffMins < 60) {
-      lastSeenText = diffMins + ' mnt lalu';
-    } else if (diffHours < 24) {
-      lastSeenText = diffHours + ' jam lalu';
-    } else if (diffDays < 7) {
-      lastSeenText = diffDays + ' hari lalu';
-    } else {
-      lastSeenText = lastSeen.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
-    }
+    let label;
+    if (diffMins < 1)       label = 'Baru saja';
+    else if (diffMins < 60) label = diffMins + ' mnt lalu';
+    else if (diffHours < 24) label = diffHours + ' jam lalu';
+    else if (diffDays < 7)  label = diffDays + ' hari lalu';
+    else                    label = lastSeen.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
 
-    onlineEl.innerHTML = '<span class="topbar-online-dot"></span>' + esc(otherUser) + ' · ' + lastSeenText;
+    onlineEl.innerHTML = '<span class="topbar-online-dot"></span>Terakhir dilihat ' + label;
   }
 
-  // Auto read messages when chat is open
+  // Typing indicator di bawah chat list
+  if (data.is_typing) showTypingIndicator(otherUser);
+  else hideTypingIndicator();
+
+  // Auto mark read
   if (document.getElementById('tabChat').classList.contains('active-tab')) {
-    markAllMessagesAsRead();
+    markAllRead();
   }
 }
 
-// ========== SEND MESSAGE (NO DOUBLE) ==========
+// ========== MESSAGE STATUS ==========
+async function updateMsgStatus(msgId, status) {
+  if (!currentAccount || !otherUser) return;
+  try {
+    const updateData = {
+      message_id:     msgId,
+      recipient_name: currentAccount.name,
+      status:         status,
+      updated_at:     new Date().toISOString()
+    };
+    if (status === 'delivered') updateData.delivered_at = new Date().toISOString();
+    if (status === 'read')      updateData.read_at      = new Date().toISOString();
+
+    await sb
+      .from('message_status')
+      .upsert(updateData, { onConflict: 'message_id,recipient_name' });
+
+    // Update icon langsung di UI
+    const iconEl = document.querySelector('[data-status-msg-id="' + msgId + '"]');
+    if (iconEl) iconEl.innerHTML = getStatusIconHtml(status);
+  } catch (e) {}
+}
+
+async function markAllRead() {
+  if (!currentAccount || !otherUser) return;
+  try {
+    const { data } = await sb
+      .from('chat_messages')
+      .select('id')
+      .eq('sender_name', otherUser)
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (data && data.length) {
+      for (const msg of data) {
+        await updateMsgStatus(msg.id, 'read');
+      }
+    }
+  } catch (e) {}
+}
+
+// ========== SEND MESSAGE ==========
 let isSending = false;
 
 async function sendMsg() {
   if (isSending) return;
-  const input = document.getElementById('chatInput');
+  const input  = document.getElementById('chatInput');
   const rawMsg = input.value;
-  const msg = rawMsg.replace(/^[\s\uFEFF\xA0]+|[\s\uFEFF\xA0]+$/g, '');
+  const msg    = rawMsg.replace(/^[\s\uFEFF\xA0]+|[\s\uFEFF\xA0]+$/g, '');
   if (!msg || !currentAccount) return;
 
   isSending = true;
@@ -749,47 +778,52 @@ async function sendMsg() {
   input.style.height = '';
   input.focus();
 
+  // Stop typing langsung saat kirim
+  if (isTyping) {
+    isTyping = false;
+    clearTimeout(typingTimeout);
+    sb.rpc('update_typing', { p_username: currentAccount.name, p_is_typing: false }).catch(() => {});
+  }
+
   const insertData = {
-    message: msg,
-    user_id: USER_ID,
+    message:     msg,
+    user_id:     USER_ID,
     sender_name: currentAccount.name,
     sender_role: currentAccount.role
   };
 
   if (replyTarget) {
-    insertData.reply_to_id = replyTarget.id;
+    insertData.reply_to_id   = replyTarget.id;
     insertData.reply_to_name = replyTarget.sender_name;
     insertData.reply_to_text = replyTarget.message;
   }
-
   clearReplyBanner();
 
-  // Insert ke database
-  const res = await sb.from('chat_messages').insert([insertData]);
-  
-  if (res.error) {
+  const { data, error } = await sb
+    .from('chat_messages')
+    .insert([insertData])
+    .select()
+    .single();
+
+  if (error) {
     toast('Gagal kirim', false);
     input.value = msg;
     isSending = false;
     return;
   }
 
-  // Append langsung dari response
-  if (res.data && res.data[0]) {
-    const newMsg = res.data[0];
-    const msgId = String(newMsg.id);
-    
+  if (data) {
+    const msgId = String(data.id);
     if (!seenMsgIds.has(msgId)) {
       seenMsgIds.add(msgId);
       const el = document.getElementById('chatList');
       const ph = el.querySelector('.state-msg');
       if (ph) el.innerHTML = '';
-      el.appendChild(buildMsgEl(newMsg));
+      el.appendChild(buildMsgEl(data));
       scrollBottom(el, true);
     }
-    
-    // Update status to sent langsung
-    await updateMessageStatusDirect(newMsg.id, 'sent');
+    // Update status to sent
+    await updateMsgStatus(data.id, 'sent');
   }
 
   isSending = false;
@@ -802,8 +836,8 @@ async function doChatUpload(input) {
   if (!file) return;
 
   const isVid = file.type.startsWith('video/');
-  const ext = file.name.split('.').pop();
-  const name = 'chat_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6) + '.' + ext;
+  const ext   = file.name.split('.').pop();
+  const name  = 'chat_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6) + '.' + ext;
   const uploadUrl = SB_URL + '/storage/v1/object/gallery/' + name;
 
   try {
@@ -813,33 +847,33 @@ async function doChatUpload(input) {
       xhr.setRequestHeader('Authorization', 'Bearer ' + SB_KEY);
       xhr.setRequestHeader('x-upsert', 'false');
       xhr.setRequestHeader('Cache-Control', '3600');
-      xhr.onload = () => { xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(xhr.status)); };
+      xhr.onload = () => xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(xhr.status));
       xhr.onerror = () => reject(new Error('Network error'));
       xhr.send(file);
     });
-  } catch (err) {
+  } catch {
     toast('Upload gagal', false);
     input.value = '';
     return;
   }
 
-  const pub = sb.storage.from('gallery').getPublicUrl(name);
-  const mediaUrl = pub.data.publicUrl;
+  const pub        = sb.storage.from('gallery').getPublicUrl(name);
+  const mediaUrl   = pub.data.publicUrl;
   const msgContent = isVid ? '[video]' + mediaUrl : '[img]' + mediaUrl;
 
   const res = await sb.from('chat_messages').insert([{
-    message: msgContent,
-    user_id: USER_ID,
+    message:     msgContent,
+    user_id:     USER_ID,
     sender_name: currentAccount.name,
     sender_role: currentAccount.role
   }]);
 
-  if (res.error) { toast('Gagal kirim media', false); }
-  else { toast('Media terkirim ✓'); }
+  if (res.error) toast('Gagal kirim media', false);
+  else toast('Media terkirim ✓');
   input.value = '';
 }
 
-// ========== MULTI-SELECT (CHAT) ==========
+// ========== MULTI-SELECT ==========
 function enterSelectionMode(msgId) {
   selectionModeActive = true;
   _addToSelection(msgId);
@@ -874,14 +908,12 @@ function _renderSelectionBar() {
     bar.className = 'selection-bar';
     document.querySelector('.topbar').appendChild(bar);
   }
-
-  const isAdmin = currentAccount && currentAccount.role === 'admin';
-  const canDeleteAll = isAdmin || _allSelectedAreOwn();
-
+  const isAdmin    = currentAccount && currentAccount.role === 'admin';
+  const canDelAll  = isAdmin || _allSelectedAreOwn();
   bar.innerHTML =
     '<button class="sel-cancel-btn" onclick="exitSelectionMode()">✕ Batal</button>' +
     '<span class="sel-label">' + selectedMsgIds.size + ' dipilih</span>' +
-    (canDeleteAll ? '<button class="sel-delete-btn" onclick="delSelectedMsgs()">🗑 Hapus</button>' : '<span style="width:74px"></span>');
+    (canDelAll ? '<button class="sel-delete-btn" onclick="delSelectedMsgs()">🗑 Hapus</button>' : '<span style="width:74px"></span>');
   bar.style.display = 'flex';
 }
 
@@ -903,47 +935,50 @@ function exitSelectionMode() {
 
 async function delSelectedMsgs() {
   if (selectedMsgIds.size === 0) return;
-  const ids = Array.from(selectedMsgIds);
+  const ids   = Array.from(selectedMsgIds);
   const label = ids.length === 1 ? 'pesan ini' : ids.length + ' pesan';
-  const ok = await showConfirm('Hapus ' + label + '?', {
+  const ok    = await showConfirm('Hapus ' + label + '?', {
     icon: '🗑', title: 'Hapus Pesan', okText: 'Hapus', cancelText: 'Batal'
   });
   if (!ok) return;
-
   exitSelectionMode();
   const res = await sb.from('chat_messages').delete().in('id', ids);
   if (res.error) { toast('Gagal hapus', false); return; }
-
   ids.forEach(id => {
     const el = document.querySelector('[data-msg-id="' + id + '"]');
     if (el) el.remove();
     seenMsgIds.delete(String(id));
   });
-
   toast(ids.length === 1 ? 'Pesan dihapus' : ids.length + ' pesan dihapus');
 }
 
 // ========== GALLERY ==========
-let galleryItems = [];
+let galleryItems  = [];
 let galleryLoaded = false;
-let lbCurrentIdx = -1;
+let lbCurrentIdx  = -1;
 
 async function loadGallery() {
   const el = document.getElementById('galleryGrid');
   el.innerHTML = '<p class="state-msg">Memuat...</p>';
+
   const res = await sb.from('gallery').select('*').order('created_at', { ascending: false });
   if (res.error) { el.innerHTML = '<p class="state-msg err">Error: ' + res.error.message + '</p>'; return; }
+
   galleryLoaded = true;
-  galleryItems = [];
-  if (!res.data || !res.data.length) { el.innerHTML = '<p class="state-msg">Belum ada media.</p>'; return; }
+  galleryItems  = [];
+
+  if (!res.data || !res.data.length) {
+    el.innerHTML = '<p class="state-msg">Belum ada media.</p>';
+    return;
+  }
 
   el.innerHTML = '';
   const isAdmin = currentAccount && currentAccount.role === 'admin';
-  const frag = document.createDocumentFragment();
+  const frag    = document.createDocumentFragment();
 
   res.data.forEach((f, idx) => {
     const isVid = /\.(mp4|webm|mov|avi)$/i.test(f.file_name || '');
-    galleryItems.push({ url: f.file_url, isVid: isVid });
+    galleryItems.push({ url: f.file_url, isVid });
 
     const d = document.createElement('div');
     d.className = 'g-item';
@@ -953,25 +988,32 @@ async function loadGallery() {
       thumb.className = 'g-video-thumb';
       thumb.style.cssText = 'position:relative;width:100%;height:100%;';
       const vid = document.createElement('video');
-      vid.className = 'g-media g-video-preview';
-      vid.preload = 'metadata'; vid.muted = true; vid.playsInline = true; vid.src = f.file_url + '#t=0.001';
+      vid.className  = 'g-media g-video-preview';
+      vid.preload    = 'metadata';
+      vid.muted      = true;
+      vid.playsInline = true;
+      vid.src        = f.file_url + '#t=0.001';
       const playIcon = document.createElement('div');
       playIcon.className = 'g-play-icon';
       playIcon.innerHTML = '<svg viewBox="0 0 24 24" fill="white" width="28" height="28"><circle cx="12" cy="12" r="12" fill="rgba(0,0,0,0.5)"/><polygon points="10,8 18,12 10,16" fill="white"/></svg>';
-      thumb.appendChild(vid); thumb.appendChild(playIcon);
+      thumb.appendChild(vid);
+      thumb.appendChild(playIcon);
       ((i) => { thumb.onclick = () => openLightbox(i); })(idx);
       d.appendChild(thumb);
     } else {
       const img = document.createElement('img');
-      img.src = f.file_url; img.className = 'g-media';
-      img.loading = 'lazy'; img.decoding = 'async';
+      img.src       = f.file_url;
+      img.className = 'g-media';
+      img.loading   = 'lazy';
+      img.decoding  = 'async';
       ((i) => { img.onclick = () => openLightbox(i); })(idx);
       d.appendChild(img);
     }
 
     if (isAdmin) {
       const delBtn = document.createElement('button');
-      delBtn.className = 'g-del'; delBtn.textContent = '✕';
+      delBtn.className   = 'g-del';
+      delBtn.textContent = '✕';
       delBtn.onclick = (e) => { e.stopPropagation(); delMedia(f.id, f.file_name); };
       d.appendChild(delBtn);
     }
@@ -996,7 +1038,7 @@ async function delMedia(id, name) {
 
 // ========== GALLERY UPLOAD ==========
 let pendingUploadFile = null;
-let uploadXHR = null;
+let uploadXHR         = null;
 
 function triggerUploadConfirm(input) {
   if (!currentAccount || currentAccount.role !== 'admin') {
@@ -1011,16 +1053,16 @@ function triggerUploadConfirm(input) {
   document.getElementById('uploadFileName').textContent = file.name;
   document.getElementById('uploadFileSize').textContent = fmtBytes(file.size) + ' · ' + (file.type || 'unknown');
   document.getElementById('uploadProgressWrap').style.display = 'none';
-  document.getElementById('uploadProgressFill').style.width = '0%';
-  document.getElementById('uploadPctLabel').textContent = '0%';
-  document.getElementById('uploadSpeedLabel').textContent = '—';
-  document.getElementById('uploadRemainLabel').textContent = '—';
+  document.getElementById('uploadProgressFill').style.width   = '0%';
+  document.getElementById('uploadPctLabel').textContent       = '0%';
+  document.getElementById('uploadSpeedLabel').textContent     = '—';
+  document.getElementById('uploadRemainLabel').textContent    = '—';
 
-  const goBtn = document.getElementById('uploadGoBtn');
+  const goBtn     = document.getElementById('uploadGoBtn');
   const cancelBtn = document.getElementById('uploadCancelBtn');
-  const closeBtn = document.getElementById('uploadModalCloseBtn');
-  goBtn.disabled = false;
-  goBtn.textContent = 'Upload';
+  const closeBtn  = document.getElementById('uploadModalCloseBtn');
+  goBtn.disabled  = false;
+  goBtn.textContent    = 'Upload';
   cancelBtn.textContent = 'Batal';
   closeBtn.style.display = '';
   document.getElementById('uploadConfirmModal').classList.add('show');
@@ -1035,22 +1077,21 @@ function cancelUploadModal() {
 
 async function startGalleryUpload() {
   if (!pendingUploadFile) return;
-  const file = pendingUploadFile;
-  const goBtn = document.getElementById('uploadGoBtn');
+  const file    = pendingUploadFile;
+  const goBtn   = document.getElementById('uploadGoBtn');
   const cancelBtn = document.getElementById('uploadCancelBtn');
-  const closeBtn = document.getElementById('uploadModalCloseBtn');
-  goBtn.disabled = true;
-  goBtn.textContent = 'Mengupload...';
+  const closeBtn  = document.getElementById('uploadModalCloseBtn');
+  goBtn.disabled  = true;
+  goBtn.textContent     = 'Mengupload...';
   closeBtn.style.display = 'none';
-  cancelBtn.textContent = 'Batalkan';
+  cancelBtn.textContent  = 'Batalkan';
 
   document.getElementById('uploadProgressWrap').style.display = 'flex';
-  const ext = file.name.split('.').pop();
+  const ext  = file.name.split('.').pop();
   const name = Date.now() + '_' + Math.random().toString(36).slice(2, 6) + '.' + ext;
   const uploadUrl = SB_URL + '/storage/v1/object/gallery/' + name;
 
-  let lastLoaded = 0, lastTime = Date.now();
-  let success = false;
+  let lastLoaded = 0, lastTime = Date.now(), success = false;
 
   try {
     await new Promise((resolve, reject) => {
@@ -1062,18 +1103,17 @@ async function startGalleryUpload() {
       xhr.setRequestHeader('Cache-Control', '3600');
       xhr.upload.onprogress = (e) => {
         if (!e.lengthComputable) return;
-        const now = Date.now();
-        const percent = Math.round((e.loaded / e.total) * 100);
+        const now     = Date.now();
+        const pct     = Math.round((e.loaded / e.total) * 100);
         const elapsed = (now - lastTime) / 1000;
-        const speed = elapsed > 0 ? (e.loaded - lastLoaded) / elapsed : 0;
-        lastLoaded = e.loaded;
-        lastTime = now;
-        document.getElementById('uploadProgressFill').style.width = percent + '%';
-        document.getElementById('uploadPctLabel').textContent = percent + '%';
-        document.getElementById('uploadSpeedLabel').textContent = speed > 0 ? fmtBytes(speed) + '/s' : '—';
-        document.getElementById('uploadRemainLabel').textContent = fmtBytes(e.total - e.loaded) + ' tersisa';
+        const speed   = elapsed > 0 ? (e.loaded - lastLoaded) / elapsed : 0;
+        lastLoaded = e.loaded; lastTime = now;
+        document.getElementById('uploadProgressFill').style.width = pct + '%';
+        document.getElementById('uploadPctLabel').textContent     = pct + '%';
+        document.getElementById('uploadSpeedLabel').textContent   = speed > 0 ? fmtBytes(speed) + '/s' : '—';
+        document.getElementById('uploadRemainLabel').textContent  = fmtBytes(e.total - e.loaded) + ' tersisa';
       };
-      xhr.onload = () => { uploadXHR = null; if (xhr.status >= 200 && xhr.status < 300) resolve(); else reject(new Error('HTTP ' + xhr.status)); };
+      xhr.onload  = () => { uploadXHR = null; xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error('HTTP ' + xhr.status)); };
       xhr.onerror = () => { uploadXHR = null; reject(new Error('Network error')); };
       xhr.onabort = () => { uploadXHR = null; reject(new Error('Dibatalkan')); };
       xhr.send(file);
@@ -1083,7 +1123,7 @@ async function startGalleryUpload() {
     if (err.message === 'Dibatalkan') toast('Upload dibatalkan', false);
     else toast('Upload gagal: ' + err.message, false);
     goBtn.disabled = false;
-    goBtn.textContent = 'Upload';
+    goBtn.textContent     = 'Upload';
     cancelBtn.textContent = 'Batal';
     closeBtn.style.display = '';
     document.getElementById('uploadProgressWrap').style.display = 'none';
@@ -1093,29 +1133,33 @@ async function startGalleryUpload() {
   }
 
   if (!success) return;
-  const pub = sb.storage.from('gallery').getPublicUrl(name);
-  const dbRes = await sb.from('gallery').insert([{ file_url: pub.data.publicUrl, file_name: name }]);
+
+  const pub   = sb.storage.from('gallery').getPublicUrl(name);
+  const dbRes = await sb.from('gallery').insert([{
+    file_url:    pub.data.publicUrl,
+    file_name:   name,
+    uploaded_by: currentAccount ? currentAccount.name : null
+  }]);
+
   if (dbRes.error) toast('Gagal simpan: ' + dbRes.error.message, false);
   else { toast('Berhasil diupload ✓'); galleryLoaded = false; loadGallery(); }
 
   pendingUploadFile = null;
-  uploadXHR = null;
+  uploadXHR         = null;
   document.getElementById('uploadConfirmModal').classList.remove('show');
 }
 
 // ========== LIGHTBOX ==========
 function openLightbox(idx) {
   lbCurrentIdx = typeof idx === 'number' ? idx : -1;
-  const lb = document.getElementById('lightbox');
   _renderLightboxItem(lbCurrentIdx);
   _updateLightboxNav();
-  lb.classList.add('show');
+  document.getElementById('lightbox').classList.add('show');
   document.body.style.overflow = 'hidden';
 }
 
 function openLightboxFromChat(url) {
   lbCurrentIdx = -1;
-  const lb = document.getElementById('lightbox');
   const wrap = document.getElementById('lightboxMediaWrap');
   _clearLightboxMedia(wrap);
   const img = document.getElementById('lightboxImg');
@@ -1124,7 +1168,7 @@ function openLightboxFromChat(url) {
   document.getElementById('lightboxCounter').innerHTML = '';
   document.getElementById('lightboxPrev').style.display = 'none';
   document.getElementById('lightboxNext').style.display = 'none';
-  lb.classList.add('show');
+  document.getElementById('lightbox').classList.add('show');
   document.body.style.overflow = 'hidden';
 }
 
@@ -1142,16 +1186,14 @@ function _renderLightboxItem(idx) {
   const img = document.getElementById('lightboxImg');
   if (idx < 0 || !galleryItems[idx]) return;
   const item = galleryItems[idx];
-
   if (item.isVid) {
     img.style.display = 'none';
     const vid = document.createElement('video');
-    vid.id = 'lightboxVideo';
-    vid.src = item.url;
+    vid.id       = 'lightboxVideo';
+    vid.src      = item.url;
     vid.controls = true;
     vid.playsInline = true;
-    vid.autoplay = false;
-    vid.style.cssText = 'max-width:100%;max-height:76vh;width:auto;height:auto;object-fit:contain;display:block;border-radius:0;background:transparent;';
+    vid.style.cssText = 'max-width:100%;max-height:76vh;width:auto;height:auto;object-fit:contain;display:block;';
     wrap.appendChild(vid);
   } else {
     img.src = item.url;
@@ -1174,12 +1216,10 @@ function _updateLightboxNav() {
 
 function _updateLightboxCounter(idx) {
   const counter = document.getElementById('lightboxCounter');
-  if (!counter) return;
-  if (galleryItems.length <= 1) { counter.innerHTML = ''; return; }
-  let dots = '';
-  const total = Math.min(galleryItems.length, 12);
+  if (!counter || galleryItems.length <= 1) { if (counter) counter.innerHTML = ''; return; }
   const start = Math.max(0, idx - 5);
-  const end = Math.min(galleryItems.length - 1, start + total - 1);
+  const end   = Math.min(galleryItems.length - 1, start + 11);
+  let dots = '';
   for (let i = start; i <= end; i++) {
     dots += '<span class="lb-dot' + (i === idx ? ' active' : '') + '"></span>';
   }
@@ -1193,20 +1233,19 @@ function lightboxNav(dir) {
   lbCurrentIdx = next;
   const wrap = document.getElementById('lightboxMediaWrap');
   wrap.style.transition = 'opacity 0.15s ease, transform 0.15s ease';
-  wrap.style.opacity = '0';
-  wrap.style.transform = 'translateX(' + (dir > 0 ? '24px' : '-24px') + ')';
+  wrap.style.opacity    = '0';
+  wrap.style.transform  = 'translateX(' + (dir > 0 ? '24px' : '-24px') + ')';
   setTimeout(() => {
     _renderLightboxItem(lbCurrentIdx);
     _updateLightboxNav();
     wrap.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
-    wrap.style.opacity = '1';
-    wrap.style.transform = 'translateX(0)';
+    wrap.style.opacity    = '1';
+    wrap.style.transform  = 'translateX(0)';
   }, 120);
 }
 
 function closeLightbox() {
-  const lb = document.getElementById('lightbox');
-  lb.classList.remove('show');
+  document.getElementById('lightbox').classList.remove('show');
   const wrap = document.getElementById('lightboxMediaWrap');
   _clearLightboxMedia(wrap);
   const img = document.getElementById('lightboxImg');
@@ -1217,23 +1256,20 @@ function closeLightbox() {
   if (wrap) { wrap.style.opacity = ''; wrap.style.transform = ''; wrap.style.transition = ''; }
 }
 
-(function() {
+// Lightbox swipe
+(function () {
   document.addEventListener('DOMContentLoaded', () => {
     const lb = document.getElementById('lightbox');
     if (!lb) return;
     let lbSwipeStartX = 0, lbSwiping = false;
-
     lb.addEventListener('touchstart', (e) => {
-      if (e.target.closest('.lightbox-close') || e.target.closest('.lightbox-prev') || e.target.closest('.lightbox-next')) return;
+      if (e.target.closest('.lightbox-close,.lightbox-prev,.lightbox-next')) return;
       lbSwipeStartX = e.touches[0].clientX;
       lbSwiping = false;
     }, { passive: true });
-
     lb.addEventListener('touchmove', (e) => {
-      const dx = Math.abs(e.touches[0].clientX - lbSwipeStartX);
-      if (dx > 12) lbSwiping = true;
+      if (Math.abs(e.touches[0].clientX - lbSwipeStartX) > 12) lbSwiping = true;
     }, { passive: true });
-
     lb.addEventListener('touchend', (e) => {
       if (!lbSwiping) return;
       const dx = e.changedTouches[0].clientX - lbSwipeStartX;
@@ -1243,10 +1279,13 @@ function closeLightbox() {
   });
 })();
 
-// Cleanup on page unload
+// ========== CLEANUP ==========
 window.addEventListener('beforeunload', () => {
   if (presenceInterval) clearInterval(presenceInterval);
-  if (chatChannel) { try { sb.removeChannel(chatChannel); } catch (e) {} }
-  if (presenceChannel) { try { sb.removeChannel(presenceChannel); } catch (e) {} }
-  if (pollTimer) clearInterval(pollTimer);
+  if (chatChannel)      { try { sb.removeChannel(chatChannel); } catch (e) {} }
+  if (presenceChannel)  { try { sb.removeChannel(presenceChannel); } catch (e) {} }
+  // Stop typing
+  if (isTyping && currentAccount) {
+    sb.rpc('update_typing', { p_username: currentAccount.name, p_is_typing: false }).catch(() => {});
+  }
 });
