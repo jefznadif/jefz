@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>Jefz - Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/dashboard.css"/>
+</head>
+<body>
+
+<!-- ===== GLOBAL ANIMATED BACKGROUND ===== -->
+<div id="globalBg"></div>
+
+<!-- ===== DASHBOARD ===== -->
+<div id="dashPage">
+
+  <!-- FIXED HEADER -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <div class="topbar-avatar" id="topbarAvatar"></div>
+      <div>
+        <div class="topbar-title" id="topbarTitle">ChatRoom</div>
+        <div class="topbar-user" id="topbarUser"></div>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <button class="tb-btn theme-btn" onclick="toggleTheme()" id="themeBtn">
+        <span id="themeBtnIcon">🌙</span>
+        <span id="themeBtnLabel">Dark Mode</span>
+      </button>
+      <button class="tb-btn logout-btn" onclick="doLogout()">Logout</button>
+    </div>
+  </header>
+
+  <!-- CHAT TAB -->
+  <div id="tabChat" class="tab active-tab">
+    <div id="chatList" class="chat-list"></div>
+
+    <!-- REPLY BANNER -->
+    <div id="replyBanner" class="reply-banner">
+      <div class="reply-banner-bar"></div>
+      <div class="reply-banner-content">
+        <span class="reply-banner-name" id="replyBannerName"></span>
+        <span class="reply-banner-text" id="replyBannerText"></span>
+      </div>
+      <button class="reply-banner-close" onclick="clearReplyBanner()">✕</button>
+    </div>
+
+    <!-- CHAT BAR -->
+    <div class="chat-bar">
+      <button class="emoji-trigger" id="emojiTrigger" onclick="toggleEmojiPicker(event)" title="Emoji">😊</button>
+      <textarea id="chatInput" class="field chat-field" placeholder="Pesan..." rows="1" oninput="autoResize(this)"></textarea>
+      <label class="chat-upload-btn" title="Kirim foto/video">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2"/>
+          <circle cx="8.5" cy="8.5" r="1.5"/>
+          <polyline points="21 15 16 10 5 21"/>
+        </svg>
+        <input type="file" accept="image/*,video/*" style="display:none" onchange="doChatUpload(this)"/>
+      </label>
+      <button class="btn-send" onclick="sendMsg()" title="Kirim">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- NOTES TAB -->
+  <div id="tabNotes" class="tab">
+    <div class="notes-countdown-banner">
+      <div class="countdown-label" id="countdownLabel">Menghitung...</div>
+      <div class="countdown-value" id="countdown">—</div>
+    </div>
+    <div id="notesList" class="notes-list"></div>
+    <div class="notes-fab-wrap">
+      <button class="fab-btn" onclick="openNoteModal()" id="fabAddNote">+</button>
+    </div>
+  </div>
+
+  <!-- GALLERY TAB -->
+  <div id="tabGallery" class="tab">
+    <div id="galleryGrid" class="gallery-grid"></div>
+    <div class="gallery-fab-wrap">
+      <label class="fab-btn fab-upload-label" title="Upload">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="22" height="22">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        <input type="file" id="fileUpload" accept="image/*,video/*" style="display:none" onchange="triggerUploadConfirm(this)"/>
+      </label>
+    </div>
+  </div>
+
+  <!-- BOTTOM NAV -->
+  <nav class="bottom-nav" id="bottomNav">
+    <button class="nav-item" onclick="goTab('Notes','Catatan',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      <span>Catatan</span>
+    </button>
+    <button class="nav-item active" onclick="goTab('Chat','ChatRoom',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+      <span>Chat</span>
+    </button>
+    <button class="nav-item" onclick="goTab('Gallery','Gallery',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+      <span>Gallery</span>
+    </button>
+  </nav>
+</div>
+
+<!-- ===== ALL MODALS ===== -->
+
+<!-- MODAL: Tambah Catatan -->
+<div id="noteModal" class="modal-overlay" onclick="closeNoteModal(event)">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title">Catatan Baru</span>
+      <button class="modal-close" onclick="closeNoteModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="text" id="noteTitleInput" class="field" placeholder="Judul catatan..."/>
+      <textarea id="noteBodyInput" class="field field-ta" rows="4" placeholder="Isi catatan..."></textarea>
+      <button class="btn-act" onclick="addNote()">Simpan Catatan</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Edit Catatan -->
+<div id="editModal" class="modal-overlay" onclick="closeEditModal(event)">
+  <div class="modal-box modal-edit-box" id="editModalBox">
+    <div class="modal-header">
+      <span class="modal-title">Edit Catatan</span>
+      <button class="modal-close" onclick="closeEditModal()">✕</button>
+    </div>
+    <div class="edit-sticky-top">
+      <div class="edit-author-row" id="editAuthorRow"></div>
+      <div class="edit-title-wrap">
+        <textarea id="editTitleInput" class="edit-title-field" placeholder="Judul catatan..." rows="1" oninput="autoResize(this)"></textarea>
+      </div>
+    </div>
+    <div class="edit-scroll-area">
+      <div class="edit-body-wrap">
+        <textarea id="editBodyInput" class="edit-body-field" placeholder="Isi catatan..."></textarea>
+      </div>
+    </div>
+    <div class="edit-footer">
+      <input type="hidden" id="editNoteId"/>
+      <button class="btn-act btn-act-full" onclick="saveEditNote()">Simpan Perubahan</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Baca Catatan Full -->
+<div id="readModal" class="modal-overlay" onclick="closeReadModal(event)">
+  <div class="modal-box modal-read">
+    <div class="modal-header">
+      <span class="modal-title" id="readModalTitle"></span>
+      <button class="modal-close" onclick="closeReadModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="read-author" id="readModalAuthor"></div>
+      <div class="read-body" id="readModalBody"></div>
+      <div class="read-ts" id="readModalTs"></div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Upload Konfirmasi (Gallery) -->
+<div id="uploadConfirmModal" class="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title">Upload Media</span>
+      <button class="modal-close" id="uploadModalCloseBtn" onclick="cancelUploadModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div>
+        <div class="upload-preview-name" id="uploadFileName">—</div>
+        <div class="upload-preview-type" id="uploadFileSize">—</div>
+      </div>
+      <div class="upload-progress-wrap" id="uploadProgressWrap" style="display:none">
+        <div class="upload-progress-bar-track">
+          <div class="upload-progress-bar-fill" id="uploadProgressFill"></div>
+        </div>
+        <div class="upload-progress-meta">
+          <span id="uploadSpeedLabel">—</span>
+          <span id="uploadRemainLabel">—</span>
+          <span class="upload-progress-pct" id="uploadPctLabel">0%</span>
+        </div>
+      </div>
+      <div class="upload-modal-actions">
+        <button class="btn-upload-cancel" id="uploadCancelBtn" onclick="cancelUploadModal()">Batal</button>
+        <button class="btn-upload-go" id="uploadGoBtn" onclick="startGalleryUpload()">Upload</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CUSTOM CONFIRM MODAL -->
+<div id="confirmModal" class="modal-overlay">
+  <div class="modal-box confirm-modal-box">
+    <div class="confirm-icon" id="confirmIcon">⚠️</div>
+    <div class="confirm-title" id="confirmTitle">Konfirmasi</div>
+    <div class="confirm-msg" id="confirmMsg">Apakah kamu yakin?</div>
+    <div class="confirm-actions">
+      <button class="confirm-btn-cancel" id="confirmCancelBtn">Batal</button>
+      <button class="confirm-btn-ok" id="confirmOkBtn">Ya</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast" class="toast"></div>
+
+<!-- LIGHTBOX -->
+<div id="lightbox" class="lightbox">
+  <div class="lightbox-overlay-bg"></div>
+  <button class="lightbox-close" onclick="closeLightbox()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="18" height="18"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+  </button>
+  <button class="lightbox-prev" id="lightboxPrev" onclick="lightboxNav(-1)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="20" height="20"><polyline points="15 18 9 12 15 6"/></svg>
+  </button>
+  <button class="lightbox-next" id="lightboxNext" onclick="lightboxNav(1)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="20" height="20"><polyline points="9 18 15 12 9 6"/></svg>
+  </button>
+  <div class="lightbox-media-wrap" id="lightboxMediaWrap">
+    <img id="lightboxImg" src="" alt="" draggable="false"/>
+  </div>
+  <div class="lightbox-counter" id="lightboxCounter"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/supabase-config.js"></script>
+<script src="js/dashboard.js"></script>
+<script src="js/chat.js"></script>
+</body>
+</html>
