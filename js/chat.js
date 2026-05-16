@@ -1,43 +1,46 @@
 // ================================================================
-// CHAT MODULE - Full Rewrite
+// CHAT MODULE - Fixed: sb.rpc tidak pakai .catch() langsung
 // ================================================================
 
-// ===== STATE =====
-let chatChannel      = null;
-let presenceChannel  = null;
-let isChatActive     = false;
-let chatLoaded       = false;
-let seenMsgIds       = new Set();
-let replyTarget      = null;
-let emojiPickerOpen  = false;
-let activeMsgMenu    = null;
-let selectedMsgIds   = new Set();
-let selectionActive  = false;
-let otherUser        = null;
-let presenceTimer    = null;
-let typingTimer      = null;
-let selfTyping       = false;
-let pollTimer        = null;
-let lastPollTs       = null;
+let chatChannel     = null;
+let presenceChannel = null;
+let isChatActive    = false;
+let chatLoaded      = false;
+let seenMsgIds      = new Set();
+let replyTarget     = null;
+let emojiPickerOpen = false;
+let activeMsgMenu   = null;
+let selectedMsgIds  = new Set();
+let selectionActive = false;
+let otherUser       = null;
+let presenceTimer   = null;
+let typingTimer     = null;
+let selfTyping      = false;
+let pollTimer       = null;
+let lastPollTs      = null;
 
 // ===== HELPERS =====
 function esc(s) {
   return s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;') : '';
 }
 function fmtTime(d) {
-  return new Date(d).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  return new Date(d).toLocaleTimeString('id-ID', { hour:'2-digit', minute:'2-digit' });
 }
 function scrollToBottom(el, smooth) {
   if (!el) return;
   requestAnimationFrame(() => el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'instant' }));
 }
 function showErr(msg) {
-  // Tampil error sebagai toast merah di layar
   const t = document.getElementById('toast');
   if (!t) return;
   t.textContent = msg;
   t.className = 'toast show err';
   setTimeout(() => { t.className = 'toast'; }, 5000);
+}
+
+// ===== RPC HELPER (aman, tanpa .catch() chaining) =====
+async function rpc(fn, params) {
+  try { await sb.rpc(fn, params); } catch (e) {}
 }
 
 // ===== TYPING SELF =====
@@ -46,16 +49,16 @@ function onChatInput() {
   autoResize(document.getElementById('chatInput'));
   if (!selfTyping) {
     selfTyping = true;
-    sb.rpc('update_typing', { p_username: currentAccount.name, p_is_typing: true }).catch(() => {});
+    rpc('update_typing', { p_username: currentAccount.name, p_is_typing: true });
   }
   clearTimeout(typingTimer);
   typingTimer = setTimeout(() => {
     selfTyping = false;
-    sb.rpc('update_typing', { p_username: currentAccount.name, p_is_typing: false }).catch(() => {});
+    rpc('update_typing', { p_username: currentAccount.name, p_is_typing: false });
   }, 2000);
 }
 
-// ===== TYPING INDICATOR UI =====
+// ===== TYPING UI =====
 function setTypingUI(show, name) {
   let el = document.getElementById('typingBubble');
   if (!show) { if (el) el.style.display = 'none'; return; }
@@ -72,12 +75,12 @@ function setTypingUI(show, name) {
     if (list && list.parentNode) list.parentNode.insertBefore(el, list.nextSibling);
   }
   const n = document.getElementById('typingName');
-  if (n) n.textContent = name + ' mengetik';
+  if (n) n.textContent = (name || '') + ' mengetik';
   el.style.display = 'flex';
   scrollToBottom(document.getElementById('chatList'), true);
 }
 
-// ===== STATUS ICON HTML =====
+// ===== STATUS ICON =====
 function statusHtml(s) {
   if (s === 'sent')
     return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" width="14" height="14" class="status-sent"><polyline points="3 8 6 11 13 4.5"/></svg>';
@@ -85,11 +88,8 @@ function statusHtml(s) {
     return '<svg viewBox="0 0 20 16" fill="none" stroke="currentColor" stroke-width="2.2" width="16" height="14" class="status-delivered"><polyline points="2 8 5 11 10.5 5"/><polyline points="7.5 8 10.5 11 16 5"/></svg>';
   if (s === 'read')
     return '<svg viewBox="0 0 20 16" fill="none" stroke="currentColor" stroke-width="2.2" width="16" height="14" class="status-read"><polyline points="2 8 5 11 10.5 5"/><polyline points="7.5 8 10.5 11 16 5"/></svg>';
-  // pending (jam)
   return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" width="13" height="13" class="status-pending"><circle cx="8" cy="8" r="6.5"/><polyline points="8 4.5 8 8 10.5 10"/></svg>';
 }
-
-// ===== FETCH STATUS =====
 async function fetchStatus(msgId) {
   try {
     const { data } = await sb.from('message_status').select('status').eq('message_id', msgId).maybeSingle();
@@ -97,34 +97,29 @@ async function fetchStatus(msgId) {
   } catch { return statusHtml('pending'); }
 }
 
-// ===== BUILD MESSAGE ELEMENT =====
+// ===== BUILD MESSAGE =====
 function buildMsg(m) {
-  const isMe      = currentAccount && m.sender_name === currentAccount.name;
-  const clr       = m.sender_name === "Jef'z" ? '#007aff' : '#e91e8c';
-  const roleTag   = m.sender_role === 'admin' ? ' 👑' : '';
-  const content   = m.message || '';
-  const isImg     = content.startsWith('[img]');
-  const isVid     = content.startsWith('[video]');
-  const mediaUrl  = (isImg || isVid) ? content.slice(isImg ? 5 : 7) : null;
+  const isMe    = currentAccount && m.sender_name === currentAccount.name;
+  const clr     = m.sender_name === "Jef'z" ? '#007aff' : '#e91e8c';
+  const roleTag = m.sender_role === 'admin' ? ' 👑' : '';
+  const content = m.message || '';
+  const isImg   = content.startsWith('[img]');
+  const isVid   = content.startsWith('[video]');
+  const media   = (isImg || isVid) ? content.slice(isImg ? 5 : 7) : null;
 
-  // Row
   const row = document.createElement('div');
   row.className = 'msg-row ' + (isMe ? 'mine' : 'theirs');
   if (m.id) row.dataset.msgId = String(m.id);
 
-  // Swipe wrap
   const sw = document.createElement('div');
   sw.className = 'msg-swipe-wrap';
 
-  // Block
   const block = document.createElement('div');
   block.className = 'msg-block';
 
-  // Inner
   const inner = document.createElement('div');
   inner.className = 'msg-block-inner';
 
-  // Sender name (theirs only)
   if (!isMe) {
     const sp = document.createElement('span');
     sp.className = 'msg-sender';
@@ -133,11 +128,9 @@ function buildMsg(m) {
     inner.appendChild(sp);
   }
 
-  // Bubble
   const bubble = document.createElement('div');
-  bubble.className = mediaUrl ? 'bubble bubble-media' : 'bubble';
+  bubble.className = media ? 'bubble bubble-media' : 'bubble';
 
-  // Action button
   const ab = document.createElement('button');
   ab.className = 'bubble-action-btn';
   ab.textContent = '⋮';
@@ -148,35 +141,32 @@ function buildMsg(m) {
   });
   bubble.appendChild(ab);
 
-  // Reply preview
   if (m.reply_to_name && m.reply_to_text) {
-    const rc  = m.reply_to_name === "Jef'z" ? '#007aff' : '#e91e8c';
-    let rprev = m.reply_to_text.length > 50 ? m.reply_to_text.slice(0, 50) + '…' : m.reply_to_text;
-    if (rprev.startsWith('[img]'))   rprev = '🖼 Foto';
-    if (rprev.startsWith('[video]')) rprev = '🎬 Video';
-    const rp = document.createElement('div');
-    rp.className = 'reply-preview';
-    rp.style.borderLeft = '3px solid ' + rc;
-    rp.innerHTML = '<span class="reply-prev-name" style="color:' + rc + '">' + esc(m.reply_to_name) + '</span><span class="reply-prev-text">' + esc(rprev) + '</span>';
-    bubble.appendChild(rp);
+    const rc = m.reply_to_name === "Jef'z" ? '#007aff' : '#e91e8c';
+    let rp   = m.reply_to_text.length > 50 ? m.reply_to_text.slice(0, 50) + '…' : m.reply_to_text;
+    if (rp.startsWith('[img]'))   rp = '🖼 Foto';
+    if (rp.startsWith('[video]')) rp = '🎬 Video';
+    const rpEl = document.createElement('div');
+    rpEl.className = 'reply-preview';
+    rpEl.style.borderLeft = '3px solid ' + rc;
+    rpEl.innerHTML = '<span class="reply-prev-name" style="color:' + rc + '">' + esc(m.reply_to_name) + '</span><span class="reply-prev-text">' + esc(rp) + '</span>';
+    bubble.appendChild(rpEl);
   }
 
-  // Media or text
-  if (isImg && mediaUrl) {
+  if (isImg && media) {
     const img = document.createElement('img');
-    img.src = mediaUrl; img.className = 'bubble-img'; img.loading = 'lazy';
-    img.onclick = (e) => { e.stopPropagation(); openLightboxFromChat(mediaUrl); };
+    img.src = media; img.className = 'bubble-img'; img.loading = 'lazy';
+    img.onclick = (e) => { e.stopPropagation(); openLightboxFromChat(media); };
     bubble.appendChild(img);
-  } else if (isVid && mediaUrl) {
+  } else if (isVid && media) {
     const vid = document.createElement('video');
-    vid.src = mediaUrl; vid.className = 'bubble-vid';
+    vid.src = media; vid.className = 'bubble-vid';
     vid.preload = 'metadata'; vid.controls = true; vid.playsInline = true;
     bubble.appendChild(vid);
   } else {
     bubble.appendChild(document.createTextNode(content));
   }
 
-  // Time + status row
   const ts = document.createElement('span');
   ts.style.cssText = 'float:right;margin-left:6px;margin-bottom:-2px;position:relative;top:3px;display:inline-flex;align-items:center;gap:3px;pointer-events:none;white-space:nowrap;';
   const timeEl = document.createElement('span');
@@ -199,13 +189,12 @@ function buildMsg(m) {
   sw.appendChild(block);
   row.appendChild(sw);
 
-  // Interactions
   initLongPress(row, m);
   initSwipeReply(row, m);
   return row;
 }
 
-// ===== LONG PRESS SELECT =====
+// ===== LONG PRESS =====
 function initLongPress(row, m) {
   const bubble = row.querySelector('.bubble');
   if (!bubble) return;
@@ -232,7 +221,9 @@ function initLongPress(row, m) {
 function initSwipeReply(row, m) {
   const sw = row.querySelector('.msg-swipe-wrap');
   let sx = 0, sy = 0, dx = 0, active = false, fired = false;
-  sw.addEventListener('touchstart', (e) => { sx = e.touches[0].clientX; sy = e.touches[0].clientY; dx = 0; active = false; fired = false; }, { passive: true });
+  sw.addEventListener('touchstart', (e) => {
+    sx = e.touches[0].clientX; sy = e.touches[0].clientY; dx = 0; active = false; fired = false;
+  }, { passive: true });
   sw.addEventListener('touchmove', (e) => {
     if (selectionActive) return;
     dx = e.touches[0].clientX - sx;
@@ -240,18 +231,24 @@ function initSwipeReply(row, m) {
     if (!active && Math.abs(dx) > dy && Math.abs(dx) > 8) active = true;
     if (!active) return;
     const cl = Math.min(Math.max(0, dx), 72);
-    sw.style.cssText = 'transform:translateX(' + cl + 'px);transition:none;';
-    if (cl >= 60 && !fired) { fired = true; row.classList.add('reply-flash'); setTimeout(() => row.classList.remove('reply-flash'), 200); }
+    sw.style.transform = 'translateX(' + cl + 'px)';
+    sw.style.transition = 'none';
+    if (cl >= 60 && !fired) {
+      fired = true;
+      row.classList.add('reply-flash');
+      setTimeout(() => row.classList.remove('reply-flash'), 200);
+    }
     if (e.cancelable) e.preventDefault();
   }, { passive: false });
   sw.addEventListener('touchend', () => {
-    if (!selectionActive && fired && dx >= 60) setReply(m.id, m.sender_name, content || m.message || '');
-    sw.style.cssText = 'transform:translateX(0);transition:transform .25s cubic-bezier(.34,1.56,.64,1);';
+    if (!selectionActive && fired && dx >= 60) setReply(m.id, m.sender_name, m.message || '');
+    sw.style.transition = 'transform .25s cubic-bezier(.34,1.56,.64,1)';
+    sw.style.transform = 'translateX(0)';
     active = false; fired = false;
   });
 }
 
-// ===== APPEND MESSAGE =====
+// ===== APPEND =====
 function appendMsg(m, smooth) {
   const list = document.getElementById('chatList');
   if (!list) return;
@@ -261,20 +258,20 @@ function appendMsg(m, smooth) {
   const ph = list.querySelector('.state-msg');
   if (ph) list.innerHTML = '';
   list.appendChild(buildMsg(m));
-  const dist = list.scrollHeight - list.scrollTop - list.clientHeight;
-  scrollToBottom(list, smooth && dist < 400);
+  scrollToBottom(list, smooth && (list.scrollHeight - list.scrollTop - list.clientHeight) < 400);
 }
 
 // ===== INIT CHAT =====
 async function initChat() {
   isChatActive = true;
 
-  // Bind input
   const inp = document.getElementById('chatInput');
   if (inp && !inp._b) {
     inp._b = true;
     inp.addEventListener('input', onChatInput);
-    inp.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); } });
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); }
+    });
   }
 
   if (!chatLoaded) {
@@ -284,7 +281,7 @@ async function initChat() {
     const { data, error } = await sb.from('chat_messages').select('*').order('created_at', { ascending: true });
 
     if (error) {
-      list.innerHTML = '<p class="state-msg err">Gagal memuat chat</p>';
+      list.innerHTML = '<p class="state-msg err">Gagal memuat</p>';
       showErr('Load error: ' + error.message);
       return;
     }
@@ -299,6 +296,7 @@ async function initChat() {
       data.forEach(m => { seenMsgIds.add(String(m.id)); frag.appendChild(buildMsg(m)); });
       list.appendChild(frag);
       scrollToBottom(list, false);
+      lastPollTs = data[data.length - 1].created_at;
     }
   }
 
@@ -311,15 +309,15 @@ async function initChat() {
 function startRealtime() {
   if (chatChannel) { try { sb.removeChannel(chatChannel); } catch (e) {} chatChannel = null; }
 
-  chatChannel = sb.channel('chat_v2_' + Date.now())
+  chatChannel = sb.channel('chat_' + Date.now())
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, (p) => {
       if (!p.new) return;
       const id = String(p.new.id);
       if (seenMsgIds.has(id)) return;
       appendMsg(p.new, true);
       if (currentAccount && p.new.sender_name !== currentAccount.name) {
-        const active = document.getElementById('tabChat').classList.contains('active-tab');
-        upsertStatus(p.new.id, active ? 'read' : 'delivered');
+        const tabOpen = document.getElementById('tabChat').classList.contains('active-tab');
+        upsertStatus(p.new.id, tabOpen ? 'read' : 'delivered');
       }
     })
     .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'chat_messages' }, (p) => {
@@ -336,7 +334,7 @@ function startRealtime() {
     .subscribe();
 }
 
-// ===== POLLING FALLBACK (3 detik) =====
+// ===== POLLING FALLBACK =====
 function startPoll() {
   if (pollTimer) return;
   pollTimer = setInterval(async () => {
@@ -344,12 +342,9 @@ function startPoll() {
     try {
       let q = sb.from('chat_messages').select('*').order('created_at', { ascending: true });
       if (lastPollTs) q = q.gt('created_at', lastPollTs);
-      else q = q.order('created_at', { ascending: false }).limit(30);
       const { data } = await q;
       if (data && data.length) {
-        // Kalau tidak ada lastPollTs, reverse dulu
-        const msgs = lastPollTs ? data : data.reverse();
-        msgs.forEach(m => appendMsg(m, false));
+        data.forEach(m => appendMsg(m, true));
         lastPollTs = data[data.length - 1].created_at;
       }
     } catch (e) {}
@@ -361,10 +356,8 @@ async function startPresence() {
   if (!currentAccount) return;
   otherUser = currentAccount.name === "Jef'z" ? 'Ndifaa' : "Jef'z";
 
-  // Set self online
-  await sb.rpc('update_presence', { p_username: currentAccount.name, p_is_online: true }).catch(() => {});
+  await rpc('update_presence', { p_username: currentAccount.name, p_is_online: true });
 
-  // Subscribe other user presence changes
   if (presenceChannel) { try { sb.removeChannel(presenceChannel); } catch (e) {} }
   presenceChannel = sb.channel('pres_' + Date.now())
     .on('postgres_changes', {
@@ -373,17 +366,14 @@ async function startPresence() {
     }, (p) => { if (p.new) renderPresence(p.new); })
     .subscribe();
 
-  // Fetch langsung
   await fetchPresence();
 
-  // Poll presence setiap 5 detik
   if (presenceTimer) clearInterval(presenceTimer);
   presenceTimer = setInterval(fetchPresence, 5000);
 
-  // Offline on unload
-  window.addEventListener('beforeunload', () => {
-    sb.rpc('update_presence', { p_username: currentAccount.name, p_is_online: false }).catch(() => {});
-    sb.rpc('update_typing',   { p_username: currentAccount.name, p_is_typing: false  }).catch(() => {});
+  window.addEventListener('beforeunload', async () => {
+    await rpc('update_presence', { p_username: currentAccount.name, p_is_online: false });
+    await rpc('update_typing',   { p_username: currentAccount.name, p_is_typing: false });
   });
 }
 
@@ -406,7 +396,6 @@ function renderPresence(data) {
     setTypingUI(true, otherUser);
     return;
   }
-
   setTypingUI(false);
 
   if (data.is_online) {
@@ -416,31 +405,26 @@ function renderPresence(data) {
     el.className = 'topbar-online show offline';
     const ls   = data.last_seen ? new Date(data.last_seen) : new Date();
     const diff = Date.now() - ls.getTime();
-    const m    = Math.floor(diff / 60000);
-    const h    = Math.floor(diff / 3600000);
-    const d    = Math.floor(diff / 86400000);
+    const mn   = Math.floor(diff / 60000);
+    const hr   = Math.floor(diff / 3600000);
+    const dy   = Math.floor(diff / 86400000);
     let lbl;
-    if (m < 1)      lbl = 'Baru saja';
-    else if (m < 60) lbl = m + ' mnt lalu';
-    else if (h < 24) lbl = h + ' jam lalu';
-    else if (d < 7)  lbl = d + ' hari lalu';
-    else             lbl = ls.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
+    if (mn < 1)      lbl = 'Baru saja';
+    else if (mn < 60) lbl = mn + ' mnt lalu';
+    else if (hr < 24) lbl = hr + ' jam lalu';
+    else if (dy < 7)  lbl = dy + ' hari lalu';
+    else              lbl = ls.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
     el.innerHTML = '<span class="topbar-online-dot"></span>Terakhir dilihat ' + lbl;
   }
 
   if (document.getElementById('tabChat').classList.contains('active-tab')) markRead();
 }
 
-// ===== MESSAGE STATUS =====
+// ===== STATUS =====
 async function upsertStatus(msgId, status) {
   if (!currentAccount) return;
   try {
-    const row = {
-      message_id:     msgId,
-      recipient_name: currentAccount.name,
-      status,
-      updated_at: new Date().toISOString()
-    };
+    const row = { message_id: msgId, recipient_name: currentAccount.name, status, updated_at: new Date().toISOString() };
     if (status === 'delivered') row.delivered_at = new Date().toISOString();
     if (status === 'read')      row.read_at      = new Date().toISOString();
     await sb.from('message_status').upsert(row, { onConflict: 'message_id,recipient_name' });
@@ -473,7 +457,7 @@ function clearReplyBanner() {
   if (b) b.style.display = 'none';
 }
 
-// ===== MSG ACTION MENU =====
+// ===== MSG MENU =====
 function closeMsgMenu() {
   if (activeMsgMenu && activeMsgMenu.parentNode) activeMsgMenu.remove();
   activeMsgMenu = null;
@@ -483,21 +467,16 @@ function showMsgMenu(msgId, sender, msg, anchor) {
   const canDel = (currentAccount && currentAccount.role === 'admin') || (currentAccount && sender === currentAccount.name);
   const menu = document.createElement('div');
   menu.className = 'msg-action-menu';
-
   const rb = document.createElement('button');
-  rb.className = 'msg-action-item';
-  rb.textContent = '↩ Balas';
+  rb.className = 'msg-action-item'; rb.textContent = '↩ Balas';
   rb.onclick = (e) => { e.stopPropagation(); closeMsgMenu(); setReply(msgId, sender, msg); };
   menu.appendChild(rb);
-
   if (canDel) {
     const db = document.createElement('button');
-    db.className = 'msg-action-item danger';
-    db.textContent = '✕ Hapus';
+    db.className = 'msg-action-item danger'; db.textContent = '✕ Hapus';
     db.onclick = (e) => { e.stopPropagation(); closeMsgMenu(); deleteMsg(msgId); };
     menu.appendChild(db);
   }
-
   const rect = anchor.getBoundingClientRect();
   const isMe = currentAccount && sender === currentAccount.name;
   menu.style.cssText = 'position:fixed;top:' + (rect.bottom + 4) + 'px;' + (isMe ? 'right:' + (window.innerWidth - rect.right) + 'px;' : 'left:' + rect.left + 'px;');
@@ -515,7 +494,7 @@ async function deleteMsg(id) {
   toast('Pesan dihapus');
 }
 
-// ===== SEND MESSAGE =====
+// ===== SEND =====
 let sending = false;
 async function sendMsg() {
   if (sending) return;
@@ -534,7 +513,7 @@ async function sendMsg() {
   if (selfTyping) {
     selfTyping = false;
     clearTimeout(typingTimer);
-    sb.rpc('update_typing', { p_username: currentAccount.name, p_is_typing: false }).catch(() => {});
+    await rpc('update_typing', { p_username: currentAccount.name, p_is_typing: false });
   }
 
   const row = {
@@ -550,28 +529,32 @@ async function sendMsg() {
   }
   clearReplyBanner();
 
-  const { data, error } = await sb.from('chat_messages').insert([row]).select().single();
+  try {
+    const { data, error } = await sb.from('chat_messages').insert([row]).select().single();
 
-  if (error) {
-    showErr('Gagal kirim: ' + error.message);
-    inp.value = msg;
-    sending = false;
-    return;
-  }
-
-  if (data) {
-    const id = String(data.id);
-    if (!seenMsgIds.has(id)) {
-      seenMsgIds.add(id);
-      const list = document.getElementById('chatList');
-      const ph   = list.querySelector('.state-msg');
-      if (ph) list.innerHTML = '';
-      list.appendChild(buildMsg(data));
-      scrollToBottom(list, true);
-      // Update lastPollTs agar polling tidak re-append
-      lastPollTs = data.created_at;
+    if (error) {
+      showErr('Gagal kirim: ' + error.message);
+      inp.value = msg;
+      sending = false;
+      return;
     }
-    upsertStatus(data.id, 'sent');
+
+    if (data) {
+      const id = String(data.id);
+      if (!seenMsgIds.has(id)) {
+        seenMsgIds.add(id);
+        lastPollTs = data.created_at;
+        const list = document.getElementById('chatList');
+        const ph   = list.querySelector('.state-msg');
+        if (ph) list.innerHTML = '';
+        list.appendChild(buildMsg(data));
+        scrollToBottom(list, true);
+      }
+      upsertStatus(data.id, 'sent');
+    }
+  } catch (err) {
+    showErr('Error: ' + err.message);
+    inp.value = msg;
   }
 
   sending = false;
@@ -610,7 +593,12 @@ async function doChatUpload(input) {
 
 // ===== MULTISELECT =====
 function enterSelect(id) { selectionActive = true; addSel(id); renderSelBar(); }
-function toggleSelect(id) { if (!selectionActive) return; if (selectedMsgIds.has(id)) remSel(id); else addSel(id); if (!selectedMsgIds.size) { exitSelect(); return; } renderSelBar(); }
+function toggleSelect(id) {
+  if (!selectionActive) return;
+  if (selectedMsgIds.has(id)) remSel(id); else addSel(id);
+  if (!selectedMsgIds.size) { exitSelect(); return; }
+  renderSelBar();
+}
 function addSel(id) { selectedMsgIds.add(id); const r = document.querySelector('[data-msg-id="' + id + '"]'); if (r) r.classList.add('msg-selected'); }
 function remSel(id) { selectedMsgIds.delete(id); const r = document.querySelector('[data-msg-id="' + id + '"]'); if (r) r.classList.remove('msg-selected'); }
 function allOwn() { for (const id of selectedMsgIds) { const r = document.querySelector('[data-msg-id="' + id + '"]'); if (!r || !r.classList.contains('mine')) return false; } return true; }
@@ -621,8 +609,11 @@ function renderSelBar() {
   bar.innerHTML = '<button class="sel-cancel-btn" onclick="exitSelect()">✕ Batal</button><span class="sel-label">' + selectedMsgIds.size + ' dipilih</span>' + (canDel ? '<button class="sel-delete-btn" onclick="delSelected()">🗑 Hapus</button>' : '<span style="width:74px"></span>');
   bar.style.display = 'flex';
 }
-function exitSelect() { selectionActive = false; selectedMsgIds.clear(); document.querySelectorAll('.msg-selected').forEach(e => e.classList.remove('msg-selected')); const b = document.getElementById('selectionBar'); if (b) b.style.display = 'none'; }
-// Keep old names for compatibility
+function exitSelect() {
+  selectionActive = false; selectedMsgIds.clear();
+  document.querySelectorAll('.msg-selected').forEach(e => e.classList.remove('msg-selected'));
+  const b = document.getElementById('selectionBar'); if (b) b.style.display = 'none';
+}
 function exitSelectionMode() { exitSelect(); }
 async function delSelected() {
   if (!selectedMsgIds.size) return;
@@ -636,7 +627,7 @@ async function delSelected() {
 }
 async function delSelectedMsgs() { await delSelected(); }
 
-// ===== EMOJI PICKER =====
+// ===== EMOJI =====
 const EMOJI_CATEGORIES = [
   { icon:'😀', label:'Smileys', emojis:['😀','😃','😄','😁','😆','😅','🤣','😂','🙂','🙃','😉','😊','😇','🥰','😍','🤩','😘','😗','☺️','😚','😙','🥲','😋','😛','😜','🤪','😝','🤑','🤗','🤭','🤫','🤔','🤐','🤨','😐','😑','😶','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🤧','🥵','🥶','🥴','😵','💫','🤯','🤠','🥳','🥸','😎','🤓','🧐','😕','😟','🙁','☹️','😮','😯','😲','😳','🥺','😦','😧','😨','😰','😥','😢','😭','😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡','😠','🤬','😈','👿','💀','☠️','💩','🤡','👹','👺','👻','👽','👾','🤖'] },
   { icon:'❤️', label:'Hearts', emojis:['❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','💟'] },
@@ -686,7 +677,6 @@ function closeEmojiPicker() {
 
 // ===== GALLERY =====
 let galleryItems = [], galleryLoaded = false, lbIdx = -1;
-
 async function loadGallery() {
   const el = document.getElementById('galleryGrid');
   el.innerHTML = '<p class="state-msg">Memuat...</p>';
@@ -732,15 +722,15 @@ function triggerUploadConfirm(input) {
   if (!currentAccount || currentAccount.role !== 'admin') { toast('Hanya admin yang bisa upload', false); input.value = ''; return; }
   const file = input.files[0]; if (!file) return;
   pendingFile = file;
-  document.getElementById('uploadFileName').textContent = file.name;
-  document.getElementById('uploadFileSize').textContent = fmtBytes(file.size) + ' · ' + (file.type || 'unknown');
+  document.getElementById('uploadFileName').textContent  = file.name;
+  document.getElementById('uploadFileSize').textContent  = fmtBytes(file.size) + ' · ' + (file.type || 'unknown');
   document.getElementById('uploadProgressWrap').style.display = 'none';
-  document.getElementById('uploadProgressFill').style.width = '0%';
-  document.getElementById('uploadPctLabel').textContent = '0%';
+  document.getElementById('uploadProgressFill').style.width   = '0%';
+  document.getElementById('uploadPctLabel').textContent   = '0%';
   document.getElementById('uploadSpeedLabel').textContent = '—';
   document.getElementById('uploadRemainLabel').textContent = '—';
   document.getElementById('uploadGoBtn').disabled = false;
-  document.getElementById('uploadGoBtn').textContent = 'Upload';
+  document.getElementById('uploadGoBtn').textContent     = 'Upload';
   document.getElementById('uploadCancelBtn').textContent = 'Batal';
   document.getElementById('uploadModalCloseBtn').style.display = '';
   document.getElementById('uploadConfirmModal').classList.add('show');
@@ -753,8 +743,10 @@ function cancelUploadModal() {
 async function startGalleryUpload() {
   if (!pendingFile) return;
   const file = pendingFile;
-  document.getElementById('uploadGoBtn').disabled = true; document.getElementById('uploadGoBtn').textContent = 'Mengupload...';
-  document.getElementById('uploadModalCloseBtn').style.display = 'none'; document.getElementById('uploadCancelBtn').textContent = 'Batalkan';
+  document.getElementById('uploadGoBtn').disabled = true;
+  document.getElementById('uploadGoBtn').textContent = 'Mengupload...';
+  document.getElementById('uploadModalCloseBtn').style.display = 'none';
+  document.getElementById('uploadCancelBtn').textContent = 'Batalkan';
   document.getElementById('uploadProgressWrap').style.display = 'flex';
   const ext = file.name.split('.').pop();
   const name = Date.now() + '_' + Math.random().toString(36).slice(2, 6) + '.' + ext;
@@ -769,48 +761,63 @@ async function startGalleryUpload() {
         if (!e.lengthComputable) return;
         const now = Date.now(), pct = Math.round(e.loaded / e.total * 100), el2 = (now - lt) / 1000, sp = el2 > 0 ? (e.loaded - ll) / el2 : 0;
         ll = e.loaded; lt = now;
-        document.getElementById('uploadProgressFill').style.width = pct + '%'; document.getElementById('uploadPctLabel').textContent = pct + '%';
+        document.getElementById('uploadProgressFill').style.width = pct + '%';
+        document.getElementById('uploadPctLabel').textContent = pct + '%';
         document.getElementById('uploadSpeedLabel').textContent = sp > 0 ? fmtBytes(sp) + '/s' : '—';
         document.getElementById('uploadRemainLabel').textContent = fmtBytes(e.total - e.loaded) + ' tersisa';
       };
-      xhr.onload = () => { uploadXHR = null; xhr.status >= 200 && xhr.status < 300 ? res() : rej(new Error('HTTP ' + xhr.status)); };
+      xhr.onload  = () => { uploadXHR = null; xhr.status >= 200 && xhr.status < 300 ? res() : rej(new Error('HTTP ' + xhr.status)); };
       xhr.onerror = () => { uploadXHR = null; rej(new Error('Network error')); };
       xhr.onabort = () => { uploadXHR = null; rej(new Error('Dibatalkan')); };
       xhr.send(file);
     }); ok = true;
   } catch (err) {
     toast(err.message === 'Dibatalkan' ? 'Upload dibatalkan' : 'Upload gagal: ' + err.message, false);
-    document.getElementById('uploadGoBtn').disabled = false; document.getElementById('uploadGoBtn').textContent = 'Upload';
-    document.getElementById('uploadCancelBtn').textContent = 'Batal'; document.getElementById('uploadModalCloseBtn').style.display = '';
-    document.getElementById('uploadProgressWrap').style.display = 'none'; document.getElementById('uploadConfirmModal').classList.remove('show');
+    document.getElementById('uploadGoBtn').disabled = false;
+    document.getElementById('uploadGoBtn').textContent = 'Upload';
+    document.getElementById('uploadCancelBtn').textContent = 'Batal';
+    document.getElementById('uploadModalCloseBtn').style.display = '';
+    document.getElementById('uploadProgressWrap').style.display = 'none';
+    document.getElementById('uploadConfirmModal').classList.remove('show');
     pendingFile = null; return;
   }
   if (!ok) return;
   const url = sb.storage.from('gallery').getPublicUrl(name).data.publicUrl;
   const { error } = await sb.from('gallery').insert([{ file_url: url, file_name: name, uploaded_by: currentAccount ? currentAccount.name : null }]);
-  if (error) toast('Gagal simpan: ' + error.message, false); else { toast('Berhasil diupload ✓'); galleryLoaded = false; loadGallery(); }
-  pendingFile = null; uploadXHR = null; document.getElementById('uploadConfirmModal').classList.remove('show');
+  if (error) toast('Gagal simpan: ' + error.message, false);
+  else { toast('Berhasil diupload ✓'); galleryLoaded = false; loadGallery(); }
+  pendingFile = null; uploadXHR = null;
+  document.getElementById('uploadConfirmModal').classList.remove('show');
 }
 
 // ===== LIGHTBOX =====
-function openLightbox(idx) { lbIdx = idx; lbRender(idx); lbNav_update(); document.getElementById('lightbox').classList.add('show'); document.body.style.overflow = 'hidden'; }
+function openLightbox(idx) { lbIdx = idx; lbRender(idx); lbNavUpdate(); document.getElementById('lightbox').classList.add('show'); document.body.style.overflow = 'hidden'; }
 function openLightboxFromChat(url) {
   lbIdx = -1; const w = document.getElementById('lightboxMediaWrap'); lbClear(w);
   const img = document.getElementById('lightboxImg'); img.src = url; img.style.display = '';
   document.getElementById('lightboxCounter').innerHTML = '';
-  document.getElementById('lightboxPrev').style.display = 'none'; document.getElementById('lightboxNext').style.display = 'none';
+  document.getElementById('lightboxPrev').style.display = 'none';
+  document.getElementById('lightboxNext').style.display = 'none';
   document.getElementById('lightbox').classList.add('show'); document.body.style.overflow = 'hidden';
 }
-function lbClear(w) { if (!w) w = document.getElementById('lightboxMediaWrap'); const v = w.querySelector('video'); if (v) { try { v.pause(); v.src = ''; } catch (e) {} v.remove(); } const img = document.getElementById('lightboxImg'); if (img) { img.src = ''; img.style.display = 'none'; } }
+function lbClear(w) {
+  if (!w) w = document.getElementById('lightboxMediaWrap');
+  const v = w.querySelector('video'); if (v) { try { v.pause(); v.src = ''; } catch (e) {} v.remove(); }
+  const img = document.getElementById('lightboxImg'); if (img) { img.src = ''; img.style.display = 'none'; }
+}
 function lbRender(idx) {
   const w = document.getElementById('lightboxMediaWrap'); lbClear(w);
   if (idx < 0 || !galleryItems[idx]) return;
   const item = galleryItems[idx], img = document.getElementById('lightboxImg');
-  if (item.isVid) { img.style.display = 'none'; const v = document.createElement('video'); v.src = item.url; v.controls = true; v.playsInline = true; v.style.cssText = 'max-width:100%;max-height:76vh;width:auto;height:auto;object-fit:contain;display:block;'; w.appendChild(v); }
-  else { img.src = item.url; img.style.display = ''; }
+  if (item.isVid) {
+    img.style.display = 'none';
+    const v = document.createElement('video'); v.src = item.url; v.controls = true; v.playsInline = true;
+    v.style.cssText = 'max-width:100%;max-height:76vh;width:auto;height:auto;object-fit:contain;display:block;';
+    w.appendChild(v);
+  } else { img.src = item.url; img.style.display = ''; }
   lbCounter(idx);
 }
-function lbNav_update() {
+function lbNavUpdate() {
   const p = document.getElementById('lightboxPrev'), n = document.getElementById('lightboxNext');
   if (lbIdx < 0 || galleryItems.length <= 1) { if (p) p.style.display = 'none'; if (n) n.style.display = 'none'; return; }
   if (p) p.style.display = lbIdx > 0 ? '' : 'none';
@@ -827,7 +834,7 @@ function lightboxNav(dir) {
   const n = lbIdx + dir; if (n < 0 || n >= galleryItems.length) return;
   lbIdx = n; const w = document.getElementById('lightboxMediaWrap');
   w.style.transition = 'opacity .15s,transform .15s'; w.style.opacity = '0'; w.style.transform = 'translateX(' + (dir > 0 ? '24px' : '-24px') + ')';
-  setTimeout(() => { lbRender(lbIdx); lbNav_update(); w.style.transition = 'opacity .2s,transform .2s'; w.style.opacity = '1'; w.style.transform = 'translateX(0)'; }, 120);
+  setTimeout(() => { lbRender(lbIdx); lbNavUpdate(); w.style.transition = 'opacity .2s,transform .2s'; w.style.opacity = '1'; w.style.transform = 'translateX(0)'; }, 120);
 }
 function closeLightbox() {
   document.getElementById('lightbox').classList.remove('show');
@@ -854,7 +861,7 @@ window.addEventListener('beforeunload', () => {
   if (chatChannel)     { try { sb.removeChannel(chatChannel);     } catch (e) {} }
   if (presenceChannel) { try { sb.removeChannel(presenceChannel); } catch (e) {} }
   if (currentAccount) {
-    sb.rpc('update_presence', { p_username: currentAccount.name, p_is_online: false }).catch(() => {});
-    sb.rpc('update_typing',   { p_username: currentAccount.name, p_is_typing: false  }).catch(() => {});
+    rpc('update_presence', { p_username: currentAccount.name, p_is_online: false });
+    rpc('update_typing',   { p_username: currentAccount.name, p_is_typing: false  });
   }
 });
