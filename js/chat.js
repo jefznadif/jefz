@@ -1,5 +1,5 @@
 // ================================================================
-// CHAT MODULE - Fixed: sb.rpc tidak pakai .catch() langsung
+// CHAT MODULE - Fixed All
 // ================================================================
 
 let chatChannel     = null;
@@ -38,7 +38,7 @@ function showErr(msg) {
   setTimeout(() => { t.className = 'toast'; }, 5000);
 }
 
-// ===== RPC HELPER (aman, tanpa .catch() chaining) =====
+// ===== RPC SAFE =====
 async function rpc(fn, params) {
   try { await sb.rpc(fn, params); } catch (e) {}
 }
@@ -80,7 +80,7 @@ function setTypingUI(show, name) {
   scrollToBottom(document.getElementById('chatList'), true);
 }
 
-// ===== STATUS ICON =====
+// ===== STATUS ICON HTML =====
 function statusHtml(s) {
   if (s === 'sent')
     return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" width="14" height="14" class="status-sent"><polyline points="3 8 6 11 13 4.5"/></svg>';
@@ -90,11 +90,24 @@ function statusHtml(s) {
     return '<svg viewBox="0 0 20 16" fill="none" stroke="currentColor" stroke-width="2.2" width="16" height="14" class="status-read"><polyline points="2 8 5 11 10.5 5"/><polyline points="7.5 8 10.5 11 16 5"/></svg>';
   return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" width="13" height="13" class="status-pending"><circle cx="8" cy="8" r="6.5"/><polyline points="8 4.5 8 8 10.5 10"/></svg>';
 }
+
+// ===== FETCH STATUS - cache agar tidak berubah ke pending saat refresh =====
+const statusCache = {};
 async function fetchStatus(msgId) {
+  const key = String(msgId);
+  if (statusCache[key]) return statusHtml(statusCache[key]);
   try {
     const { data } = await sb.from('message_status').select('status').eq('message_id', msgId).maybeSingle();
-    return statusHtml(data ? data.status : 'pending');
-  } catch { return statusHtml('pending'); }
+    const s = data ? data.status : 'sent';
+    statusCache[key] = s;
+    return statusHtml(s);
+  } catch { return statusHtml('sent'); }
+}
+
+function updateStatusCache(msgId, status) {
+  statusCache[String(msgId)] = status;
+  const ic = document.querySelector('[data-status-msg-id="' + msgId + '"]');
+  if (ic) ic.innerHTML = statusHtml(status);
 }
 
 // ===== BUILD MESSAGE =====
@@ -167,6 +180,7 @@ function buildMsg(m) {
     bubble.appendChild(document.createTextNode(content));
   }
 
+  // Time + status
   const ts = document.createElement('span');
   ts.style.cssText = 'float:right;margin-left:6px;margin-bottom:-2px;position:relative;top:3px;display:inline-flex;align-items:center;gap:3px;pointer-events:none;white-space:nowrap;';
   const timeEl = document.createElement('span');
@@ -178,8 +192,13 @@ function buildMsg(m) {
     const si = document.createElement('span');
     si.className = 'msg-status-icons';
     si.dataset.statusMsgId = String(m.id);
-    si.innerHTML = statusHtml('pending');
-    fetchStatus(m.id).then(h => { si.innerHTML = h; });
+    // Tampilkan dari cache dulu, lalu async fetch
+    if (statusCache[String(m.id)]) {
+      si.innerHTML = statusHtml(statusCache[String(m.id)]);
+    } else {
+      si.innerHTML = statusHtml('sent'); // default sent, bukan pending
+      fetchStatus(m.id).then(h => { si.innerHTML = h; });
+    }
     ts.appendChild(si);
   }
   bubble.appendChild(ts);
@@ -269,10 +288,18 @@ async function initChat() {
   if (inp && !inp._b) {
     inp._b = true;
     inp.addEventListener('input', onChatInput);
+    // Enter = new line, Shift+Enter juga new line, kirim pakai tombol send saja
     inp.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); }
+      if (e.key === 'Enter') {
+        // Selalu buat baris baru, tidak pernah kirim via Enter
+        // Biarkan default behavior textarea (newline)
+        return;
+      }
     });
   }
+
+  // Topbar: tampilkan nama otherUser
+  _updateTopbarUser();
 
   if (!chatLoaded) {
     const list = document.getElementById('chatList');
@@ -292,6 +319,15 @@ async function initChat() {
     if (!data || !data.length) {
       list.innerHTML = '<p class="state-msg">Belum ada pesan 💬</p>';
     } else {
+      // Pre-fetch semua status sekaligus
+      const msgIds = data.filter(m => currentAccount && m.sender_name === currentAccount.name).map(m => m.id);
+      if (msgIds.length) {
+        try {
+          const { data: statuses } = await sb.from('message_status').select('message_id,status').in('message_id', msgIds);
+          if (statuses) statuses.forEach(s => { statusCache[String(s.message_id)] = s.status; });
+        } catch (e) {}
+      }
+
       const frag = document.createDocumentFragment();
       data.forEach(m => { seenMsgIds.add(String(m.id)); frag.appendChild(buildMsg(m)); });
       list.appendChild(frag);
@@ -303,6 +339,14 @@ async function initChat() {
   startRealtime();
   startPresence();
   startPoll();
+}
+
+// ===== UPDATE TOPBAR USER (their name) =====
+function _updateTopbarUser() {
+  if (!currentAccount) return;
+  const their = currentAccount.name === "Jef'z" ? 'Ndifaa' : "Jef'z";
+  const el = document.getElementById('topbarUser');
+  if (el) el.textContent = their;
 }
 
 // ===== REALTIME =====
@@ -328,6 +372,7 @@ function startRealtime() {
     })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'message_status' }, (p) => {
       if (!p.new) return;
+      statusCache[String(p.new.message_id)] = p.new.status;
       const ic = document.querySelector('[data-status-msg-id="' + p.new.message_id + '"]');
       if (ic) ic.innerHTML = statusHtml(p.new.status);
     })
@@ -371,9 +416,9 @@ async function startPresence() {
   if (presenceTimer) clearInterval(presenceTimer);
   presenceTimer = setInterval(fetchPresence, 5000);
 
-  window.addEventListener('beforeunload', async () => {
-    await rpc('update_presence', { p_username: currentAccount.name, p_is_online: false });
-    await rpc('update_typing',   { p_username: currentAccount.name, p_is_typing: false });
+  window.addEventListener('beforeunload', () => {
+    rpc('update_presence', { p_username: currentAccount.name, p_is_online: false });
+    rpc('update_typing',   { p_username: currentAccount.name, p_is_typing: false });
   });
 }
 
@@ -386,35 +431,39 @@ async function fetchPresence() {
 }
 
 function renderPresence(data) {
-  const el = document.getElementById('topbarOnline');
-  if (!el || !otherUser) return;
-  el.classList.add('show');
+  const onlineEl = document.getElementById('topbarOnline');
+  if (!onlineEl || !otherUser) return;
+  onlineEl.classList.add('show');
+
+  // Nama their di topbar user
+  const userEl = document.getElementById('topbarUser');
+  if (userEl) userEl.textContent = otherUser;
 
   if (data.is_typing) {
-    el.className = 'topbar-online show typing';
-    el.innerHTML = '<span class="topbar-online-dot"></span>' + esc(otherUser) + ' mengetik…';
+    onlineEl.className = 'topbar-online show typing';
+    onlineEl.innerHTML = '<span class="topbar-online-dot"></span>' + esc(otherUser) + ' mengetik…';
     setTypingUI(true, otherUser);
     return;
   }
   setTypingUI(false);
 
   if (data.is_online) {
-    el.className = 'topbar-online show online';
-    el.innerHTML = '<span class="topbar-online-dot"></span>Online';
+    onlineEl.className = 'topbar-online show online';
+    onlineEl.innerHTML = '<span class="topbar-online-dot"></span>Online';
   } else {
-    el.className = 'topbar-online show offline';
+    onlineEl.className = 'topbar-online show offline';
     const ls   = data.last_seen ? new Date(data.last_seen) : new Date();
     const diff = Date.now() - ls.getTime();
     const mn   = Math.floor(diff / 60000);
     const hr   = Math.floor(diff / 3600000);
     const dy   = Math.floor(diff / 86400000);
     let lbl;
-    if (mn < 1)      lbl = 'Baru saja';
-    else if (mn < 60) lbl = mn + ' mnt lalu';
-    else if (hr < 24) lbl = hr + ' jam lalu';
-    else if (dy < 7)  lbl = dy + ' hari lalu';
-    else              lbl = ls.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
-    el.innerHTML = '<span class="topbar-online-dot"></span>Terakhir dilihat ' + lbl;
+    if (mn < 1)       lbl = 'Baru saja';
+    else if (mn < 60)  lbl = mn + ' mnt lalu';
+    else if (hr < 24)  lbl = hr + ' jam lalu';
+    else if (dy < 7)   lbl = dy + ' hari lalu';
+    else               lbl = ls.toLocaleDateString('id-ID', { day:'numeric', month:'short' });
+    onlineEl.innerHTML = '<span class="topbar-online-dot"></span>Terakhir dilihat ' + lbl;
   }
 
   if (document.getElementById('tabChat').classList.contains('active-tab')) markRead();
@@ -428,8 +477,7 @@ async function upsertStatus(msgId, status) {
     if (status === 'delivered') row.delivered_at = new Date().toISOString();
     if (status === 'read')      row.read_at      = new Date().toISOString();
     await sb.from('message_status').upsert(row, { onConflict: 'message_id,recipient_name' });
-    const ic = document.querySelector('[data-status-msg-id="' + msgId + '"]');
-    if (ic) ic.innerHTML = statusHtml(status);
+    updateStatusCache(msgId, status);
   } catch (e) {}
 }
 
@@ -484,7 +532,7 @@ function showMsgMenu(msgId, sender, msg, anchor) {
   activeMsgMenu = menu;
 }
 async function deleteMsg(id) {
-  const ok = await showConfirm('Hapus pesan ini?', { icon: '🗑', title: 'Hapus Pesan', okText: 'Hapus', cancelText: 'Batal' });
+  const ok = await showConfirm('Hapus pesan ini?', { icon:'🗑', title:'Hapus Pesan', okText:'Hapus', cancelText:'Batal' });
   if (!ok) return;
   const { error } = await sb.from('chat_messages').delete().eq('id', id);
   if (error) { toast('Gagal hapus', false); return; }
@@ -509,11 +557,10 @@ async function sendMsg() {
   inp.style.height = '';
   inp.focus();
 
-  // Stop typing
   if (selfTyping) {
     selfTyping = false;
     clearTimeout(typingTimer);
-    await rpc('update_typing', { p_username: currentAccount.name, p_is_typing: false });
+    rpc('update_typing', { p_username: currentAccount.name, p_is_typing: false });
   }
 
   const row = {
@@ -531,19 +578,13 @@ async function sendMsg() {
 
   try {
     const { data, error } = await sb.from('chat_messages').insert([row]).select().single();
-
-    if (error) {
-      showErr('Gagal kirim: ' + error.message);
-      inp.value = msg;
-      sending = false;
-      return;
-    }
-
+    if (error) { showErr('Gagal kirim: ' + error.message); inp.value = msg; sending = false; return; }
     if (data) {
       const id = String(data.id);
       if (!seenMsgIds.has(id)) {
         seenMsgIds.add(id);
         lastPollTs = data.created_at;
+        statusCache[id] = 'sent';
         const list = document.getElementById('chatList');
         const ph   = list.querySelector('.state-msg');
         if (ph) list.innerHTML = '';
@@ -560,14 +601,56 @@ async function sendMsg() {
   sending = false;
 }
 
-// ===== CHAT UPLOAD =====
-async function doChatUpload(input) {
+// ===== CHAT UPLOAD - dengan modal konfirmasi =====
+let pendingChatFile = null;
+
+function doChatUpload(input) {
   if (!currentAccount) return;
   const file = input.files[0];
   if (!file) return;
-  const isVid = file.type.startsWith('video/');
-  const ext   = file.name.split('.').pop();
-  const name  = 'chat_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6) + '.' + ext;
+  pendingChatFile = file;
+  input.value = '';
+
+  // Tampilkan modal konfirmasi (reuse upload modal)
+  document.getElementById('uploadFileName').textContent  = file.name;
+  document.getElementById('uploadFileSize').textContent  = fmtBytes(file.size) + ' · ' + (file.type || 'unknown');
+  document.getElementById('uploadProgressWrap').style.display = 'none';
+  document.getElementById('uploadProgressFill').style.width   = '0%';
+  document.getElementById('uploadPctLabel').textContent   = '0%';
+  document.getElementById('uploadSpeedLabel').textContent = '—';
+  document.getElementById('uploadRemainLabel').textContent = '—';
+
+  const goBtn    = document.getElementById('uploadGoBtn');
+  const cancelBtn = document.getElementById('uploadCancelBtn');
+  const closeBtn  = document.getElementById('uploadModalCloseBtn');
+  goBtn.disabled  = false;
+  goBtn.textContent    = 'Kirim';
+  cancelBtn.textContent = 'Batal';
+  closeBtn.style.display = '';
+
+  // Override tombol go untuk kirim ke chat
+  goBtn.onclick = startChatFileUpload;
+
+  document.getElementById('uploadConfirmModal').classList.add('show');
+}
+
+async function startChatFileUpload() {
+  if (!pendingChatFile || !currentAccount) return;
+  const file   = pendingChatFile;
+  const isVid  = file.type.startsWith('video/');
+  const ext    = file.name.split('.').pop();
+  const name   = 'chat_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6) + '.' + ext;
+
+  const goBtn    = document.getElementById('uploadGoBtn');
+  const closeBtn = document.getElementById('uploadModalCloseBtn');
+  const cancelBtn = document.getElementById('uploadCancelBtn');
+  goBtn.disabled  = true;
+  goBtn.textContent    = 'Mengirim...';
+  closeBtn.style.display = 'none';
+  cancelBtn.textContent  = 'Batalkan';
+  document.getElementById('uploadProgressWrap').style.display = 'flex';
+
+  let ll = 0, lt = Date.now(), ok = false;
   try {
     await new Promise((res, rej) => {
       const xhr = new XMLHttpRequest();
@@ -575,20 +658,50 @@ async function doChatUpload(input) {
       xhr.setRequestHeader('Authorization', 'Bearer ' + SB_KEY);
       xhr.setRequestHeader('x-upsert', 'false');
       xhr.setRequestHeader('Cache-Control', '3600');
-      xhr.onload  = () => xhr.status >= 200 && xhr.status < 300 ? res() : rej(new Error(xhr.status));
-      xhr.onerror = () => rej(new Error('network'));
+      xhr.upload.onprogress = (e) => {
+        if (!e.lengthComputable) return;
+        const now = Date.now(), pct = Math.round(e.loaded / e.total * 100), el2 = (now - lt) / 1000;
+        const sp = el2 > 0 ? (e.loaded - ll) / el2 : 0;
+        ll = e.loaded; lt = now;
+        document.getElementById('uploadProgressFill').style.width = pct + '%';
+        document.getElementById('uploadPctLabel').textContent = pct + '%';
+        document.getElementById('uploadSpeedLabel').textContent = sp > 0 ? fmtBytes(sp) + '/s' : '—';
+        document.getElementById('uploadRemainLabel').textContent = fmtBytes(e.total - e.loaded) + ' tersisa';
+      };
+      xhr.onload  = () => { xhr.status >= 200 && xhr.status < 300 ? res() : rej(new Error('HTTP ' + xhr.status)); };
+      xhr.onerror = () => rej(new Error('Network error'));
+      xhr.onabort = () => rej(new Error('Dibatalkan'));
       xhr.send(file);
     });
-  } catch { toast('Upload gagal', false); input.value = ''; return; }
-  const url = sb.storage.from('gallery').getPublicUrl(name).data.publicUrl;
+    ok = true;
+  } catch (err) {
+    toast(err.message === 'Dibatalkan' ? 'Dibatalkan' : 'Upload gagal', false);
+    goBtn.disabled = false; goBtn.textContent = 'Kirim';
+    cancelBtn.textContent = 'Batal'; closeBtn.style.display = '';
+    document.getElementById('uploadProgressWrap').style.display = 'none';
+    document.getElementById('uploadConfirmModal').classList.remove('show');
+    // Reset tombol go ke gallery upload
+    goBtn.onclick = startGalleryUpload;
+    pendingChatFile = null;
+    return;
+  }
+
+  if (!ok) return;
+
+  const url     = sb.storage.from('gallery').getPublicUrl(name).data.publicUrl;
+  const content = (isVid ? '[video]' : '[img]') + url;
   const { error } = await sb.from('chat_messages').insert([{
-    message: (isVid ? '[video]' : '[img]') + url,
+    message: content,
     user_id: typeof USER_ID !== 'undefined' ? USER_ID : 'u',
     sender_name: currentAccount.name,
     sender_role: currentAccount.role
   }]);
-  if (error) toast('Gagal kirim', false); else toast('Terkirim ✓');
-  input.value = '';
+  if (error) toast('Gagal kirim', false); else toast('Media terkirim ✓');
+
+  document.getElementById('uploadConfirmModal').classList.remove('show');
+  // Reset tombol go ke gallery upload
+  document.getElementById('uploadGoBtn').onclick = startGalleryUpload;
+  pendingChatFile = null;
 }
 
 // ===== MULTISELECT =====
@@ -618,7 +731,7 @@ function exitSelectionMode() { exitSelect(); }
 async function delSelected() {
   if (!selectedMsgIds.size) return;
   const ids = Array.from(selectedMsgIds);
-  const ok  = await showConfirm('Hapus ' + (ids.length === 1 ? 'pesan ini' : ids.length + ' pesan') + '?', { icon: '🗑', title: 'Hapus Pesan', okText: 'Hapus', cancelText: 'Batal' });
+  const ok  = await showConfirm('Hapus ' + (ids.length === 1 ? 'pesan ini' : ids.length + ' pesan') + '?', { icon:'🗑', title:'Hapus Pesan', okText:'Hapus', cancelText:'Batal' });
   if (!ok) return;
   exitSelect();
   await sb.from('chat_messages').delete().in('id', ids);
@@ -708,7 +821,7 @@ async function loadGallery() {
 }
 async function delMedia(id, name) {
   if (!currentAccount || currentAccount.role !== 'admin') return;
-  const ok = await showConfirm('Hapus media ini?', { icon: '🗑', title: 'Hapus Media', okText: 'Hapus', cancelText: 'Batal' });
+  const ok = await showConfirm('Hapus media ini?', { icon:'🗑', title:'Hapus Media', okText:'Hapus', cancelText:'Batal' });
   if (!ok) return;
   await sb.storage.from('gallery').remove([name]);
   const { error } = await sb.from('gallery').delete().eq('id', id);
@@ -729,8 +842,10 @@ function triggerUploadConfirm(input) {
   document.getElementById('uploadPctLabel').textContent   = '0%';
   document.getElementById('uploadSpeedLabel').textContent = '—';
   document.getElementById('uploadRemainLabel').textContent = '—';
-  document.getElementById('uploadGoBtn').disabled = false;
-  document.getElementById('uploadGoBtn').textContent     = 'Upload';
+  const goBtn    = document.getElementById('uploadGoBtn');
+  goBtn.disabled = false;
+  goBtn.textContent = 'Upload';
+  goBtn.onclick  = startGalleryUpload;  // pastikan onclick ke gallery
   document.getElementById('uploadCancelBtn').textContent = 'Batal';
   document.getElementById('uploadModalCloseBtn').style.display = '';
   document.getElementById('uploadConfirmModal').classList.add('show');
@@ -738,7 +853,9 @@ function triggerUploadConfirm(input) {
 }
 function cancelUploadModal() {
   if (uploadXHR) { try { uploadXHR.abort(); } catch (e) {} uploadXHR = null; }
-  pendingFile = null; document.getElementById('uploadConfirmModal').classList.remove('show');
+  pendingFile = null; pendingChatFile = null;
+  document.getElementById('uploadGoBtn').onclick = startGalleryUpload;
+  document.getElementById('uploadConfirmModal').classList.remove('show');
 }
 async function startGalleryUpload() {
   if (!pendingFile) return;
