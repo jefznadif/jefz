@@ -1,5 +1,8 @@
 // ================================================================
-// CHAT MODULE - Fixed All
+// CHAT MODULE
+// - Status (pending/sent/delivered/read) langsung dari Supabase
+// - Header tidak naik saat keyboard aktif
+// - Fitur Edit pesan
 // ================================================================
 
 let chatChannel     = null;
@@ -19,6 +22,10 @@ let selfTyping      = false;
 let pollTimer       = null;
 let lastPollTs      = null;
 
+// Edit state
+let editingMsgId    = null;
+let editingOriginal = '';
+
 // ===== HELPERS =====
 function esc(s) {
   return s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;') : '';
@@ -37,16 +44,42 @@ function showErr(msg) {
   t.className = 'toast show err';
   setTimeout(() => { t.className = 'toast'; }, 5000);
 }
-
-// ===== RPC SAFE =====
 async function rpc(fn, params) {
   try { await sb.rpc(fn, params); } catch (e) {}
+}
+
+// ===== FIX HEADER TIDAK NAIK SAAT KEYBOARD =====
+function fixHeaderOnKeyboard() {
+  if (!window.visualViewport) return;
+  const topbar = document.querySelector('.topbar');
+  const nav    = document.querySelector('.bottom-nav');
+  const tab    = document.getElementById('tabChat');
+
+  function onVPResize() {
+    const vh = window.visualViewport.height;
+    const ot = window.visualViewport.offsetTop;
+    if (topbar) {
+      topbar.style.top  = ot + 'px';
+      topbar.style.position = 'fixed';
+    }
+    if (tab) {
+      tab.style.top    = (ot + 62) + 'px';
+      tab.style.bottom = (window.innerHeight - ot - vh + 68) + 'px';
+    }
+    if (nav) {
+      nav.style.bottom = (window.innerHeight - ot - vh) + 'px';
+    }
+  }
+
+  window.visualViewport.addEventListener('resize', onVPResize);
+  window.visualViewport.addEventListener('scroll', onVPResize);
 }
 
 // ===== TYPING SELF =====
 function onChatInput() {
   if (!currentAccount) return;
   autoResize(document.getElementById('chatInput'));
+  if (editingMsgId) return; // tidak trigger typing saat edit
   if (!selfTyping) {
     selfTyping = true;
     rpc('update_typing', { p_username: currentAccount.name, p_is_typing: true });
@@ -88,26 +121,56 @@ function statusHtml(s) {
     return '<svg viewBox="0 0 20 16" fill="none" stroke="currentColor" stroke-width="2.2" width="16" height="14" class="status-delivered"><polyline points="2 8 5 11 10.5 5"/><polyline points="7.5 8 10.5 11 16 5"/></svg>';
   if (s === 'read')
     return '<svg viewBox="0 0 20 16" fill="none" stroke="currentColor" stroke-width="2.2" width="16" height="14" class="status-read"><polyline points="2 8 5 11 10.5 5"/><polyline points="7.5 8 10.5 11 16 5"/></svg>';
+  // pending
   return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" width="13" height="13" class="status-pending"><circle cx="8" cy="8" r="6.5"/><polyline points="8 4.5 8 8 10.5 10"/></svg>';
 }
 
-// ===== FETCH STATUS - cache agar tidak berubah ke pending saat refresh =====
-const statusCache = {};
-async function fetchStatus(msgId) {
-  const key = String(msgId);
-  if (statusCache[key]) return statusHtml(statusCache[key]);
+// ===== FETCH STATUS LANGSUNG DARI SUPABASE =====
+async function fetchAndRenderStatus(msgId) {
+  const el = document.querySelector('[data-status-msg-id="' + msgId + '"]');
+  if (!el) return;
   try {
-    const { data } = await sb.from('message_status').select('status').eq('message_id', msgId).maybeSingle();
-    const s = data ? data.status : 'sent';
-    statusCache[key] = s;
-    return statusHtml(s);
-  } catch { return statusHtml('sent'); }
+    const { data } = await sb
+      .from('message_status')
+      .select('status')
+      .eq('message_id', msgId)
+      .maybeSingle();
+    el.innerHTML = statusHtml(data ? data.status : 'sent');
+  } catch (e) {
+    el.innerHTML = statusHtml('sent');
+  }
 }
 
-function updateStatusCache(msgId, status) {
-  statusCache[String(msgId)] = status;
-  const ic = document.querySelector('[data-status-msg-id="' + msgId + '"]');
-  if (ic) ic.innerHTML = statusHtml(status);
+// ===== UPSERT STATUS =====
+async function upsertStatus(msgId, status) {
+  if (!currentAccount) return;
+  try {
+    const row = {
+      message_id:     msgId,
+      recipient_name: currentAccount.name,
+      status,
+      updated_at: new Date().toISOString()
+    };
+    if (status === 'delivered') row.delivered_at = new Date().toISOString();
+    if (status === 'read')      row.read_at      = new Date().toISOString();
+    await sb.from('message_status').upsert(row, { onConflict: 'message_id,recipient_name' });
+    // Update ikon langsung di DOM
+    const ic = document.querySelector('[data-status-msg-id="' + msgId + '"]');
+    if (ic) ic.innerHTML = statusHtml(status);
+  } catch (e) {}
+}
+
+async function markRead() {
+  if (!currentAccount || !otherUser) return;
+  try {
+    const { data } = await sb
+      .from('chat_messages')
+      .select('id')
+      .eq('sender_name', otherUser)
+      .order('created_at', { ascending: false })
+      .limit(30);
+    if (data) for (const m of data) await upsertStatus(m.id, 'read');
+  } catch (e) {}
 }
 
 // ===== BUILD MESSAGE =====
@@ -119,6 +182,7 @@ function buildMsg(m) {
   const isImg   = content.startsWith('[img]');
   const isVid   = content.startsWith('[video]');
   const media   = (isImg || isVid) ? content.slice(isImg ? 5 : 7) : null;
+  const isEdited = m.is_edited ? true : false;
 
   const row = document.createElement('div');
   row.className = 'msg-row ' + (isMe ? 'mine' : 'theirs');
@@ -144,16 +208,18 @@ function buildMsg(m) {
   const bubble = document.createElement('div');
   bubble.className = media ? 'bubble bubble-media' : 'bubble';
 
+  // Action button
   const ab = document.createElement('button');
   ab.className = 'bubble-action-btn';
   ab.textContent = '⋮';
   ab.addEventListener('click', (e) => {
     e.stopPropagation();
     if (selectionActive) return;
-    showMsgMenu(m.id, m.sender_name, content, ab);
+    showMsgMenu(m.id, m.sender_name, content, ab, isImg || isVid);
   });
   bubble.appendChild(ab);
 
+  // Reply preview
   if (m.reply_to_name && m.reply_to_text) {
     const rc = m.reply_to_name === "Jef'z" ? '#007aff' : '#e91e8c';
     let rp   = m.reply_to_text.length > 50 ? m.reply_to_text.slice(0, 50) + '…' : m.reply_to_text;
@@ -166,6 +232,7 @@ function buildMsg(m) {
     bubble.appendChild(rpEl);
   }
 
+  // Content
   if (isImg && media) {
     const img = document.createElement('img');
     img.src = media; img.className = 'bubble-img'; img.loading = 'lazy';
@@ -180,9 +247,17 @@ function buildMsg(m) {
     bubble.appendChild(document.createTextNode(content));
   }
 
-  // Time + status
+  // Time + edited + status
   const ts = document.createElement('span');
   ts.style.cssText = 'float:right;margin-left:6px;margin-bottom:-2px;position:relative;top:3px;display:inline-flex;align-items:center;gap:3px;pointer-events:none;white-space:nowrap;';
+
+  if (isEdited) {
+    const ed = document.createElement('span');
+    ed.textContent = 'diedit';
+    ed.style.cssText = 'font-size:9px;color:var(--text3);font-style:italic;';
+    ts.appendChild(ed);
+  }
+
   const timeEl = document.createElement('span');
   timeEl.textContent = fmtTime(m.created_at);
   timeEl.style.cssText = 'font-size:10px;color:var(--text3);';
@@ -192,13 +267,8 @@ function buildMsg(m) {
     const si = document.createElement('span');
     si.className = 'msg-status-icons';
     si.dataset.statusMsgId = String(m.id);
-    // Tampilkan dari cache dulu, lalu async fetch
-    if (statusCache[String(m.id)]) {
-      si.innerHTML = statusHtml(statusCache[String(m.id)]);
-    } else {
-      si.innerHTML = statusHtml('sent'); // default sent, bukan pending
-      fetchStatus(m.id).then(h => { si.innerHTML = h; });
-    }
+    si.innerHTML = statusHtml('sent'); // default sent, async update
+    fetchAndRenderStatus(m.id); // langsung fetch dari supabase
     ts.appendChild(si);
   }
   bubble.appendChild(ts);
@@ -280,32 +350,42 @@ function appendMsg(m, smooth) {
   scrollToBottom(list, smooth && (list.scrollHeight - list.scrollTop - list.clientHeight) < 400);
 }
 
+// ===== UPDATE MESSAGE IN DOM =====
+function updateMsgInDom(m) {
+  const existing = document.querySelector('[data-msg-id="' + m.id + '"]');
+  if (!existing) return;
+  const newEl = buildMsg(m);
+  existing.replaceWith(newEl);
+  // Re-fetch status untuk pesan yang diupdate
+  if (currentAccount && m.sender_name === currentAccount.name) {
+    fetchAndRenderStatus(m.id);
+  }
+}
+
 // ===== INIT CHAT =====
 async function initChat() {
   isChatActive = true;
+
+  // Fix header keyboard
+  fixHeaderOnKeyboard();
 
   const inp = document.getElementById('chatInput');
   if (inp && !inp._b) {
     inp._b = true;
     inp.addEventListener('input', onChatInput);
-    // Enter = new line, Shift+Enter juga new line, kirim pakai tombol send saja
-    inp.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        // Selalu buat baris baru, tidak pernah kirim via Enter
-        // Biarkan default behavior textarea (newline)
-        return;
-      }
-    });
+    // Enter = baris baru (tidak kirim), kirim via tombol send
   }
 
-  // Topbar: tampilkan nama otherUser
   _updateTopbarUser();
 
   if (!chatLoaded) {
     const list = document.getElementById('chatList');
     list.innerHTML = '<p class="state-msg">Memuat...</p>';
 
-    const { data, error } = await sb.from('chat_messages').select('*').order('created_at', { ascending: true });
+    const { data, error } = await sb
+      .from('chat_messages')
+      .select('*')
+      .order('created_at', { ascending: true });
 
     if (error) {
       list.innerHTML = '<p class="state-msg err">Gagal memuat</p>';
@@ -319,15 +399,6 @@ async function initChat() {
     if (!data || !data.length) {
       list.innerHTML = '<p class="state-msg">Belum ada pesan 💬</p>';
     } else {
-      // Pre-fetch semua status sekaligus
-      const msgIds = data.filter(m => currentAccount && m.sender_name === currentAccount.name).map(m => m.id);
-      if (msgIds.length) {
-        try {
-          const { data: statuses } = await sb.from('message_status').select('message_id,status').in('message_id', msgIds);
-          if (statuses) statuses.forEach(s => { statusCache[String(s.message_id)] = s.status; });
-        } catch (e) {}
-      }
-
       const frag = document.createDocumentFragment();
       data.forEach(m => { seenMsgIds.add(String(m.id)); frag.appendChild(buildMsg(m)); });
       list.appendChild(frag);
@@ -341,7 +412,7 @@ async function initChat() {
   startPoll();
 }
 
-// ===== UPDATE TOPBAR USER (their name) =====
+// ===== TOPBAR USER = THEIR NAME =====
 function _updateTopbarUser() {
   if (!currentAccount) return;
   const their = currentAccount.name === "Jef'z" ? 'Ndifaa' : "Jef'z";
@@ -364,6 +435,10 @@ function startRealtime() {
         upsertStatus(p.new.id, tabOpen ? 'read' : 'delivered');
       }
     })
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chat_messages' }, (p) => {
+      if (!p.new) return;
+      updateMsgInDom(p.new);
+    })
     .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'chat_messages' }, (p) => {
       if (!p.old || !p.old.id) return;
       const el = document.querySelector('[data-msg-id="' + p.old.id + '"]');
@@ -372,7 +447,6 @@ function startRealtime() {
     })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'message_status' }, (p) => {
       if (!p.new) return;
-      statusCache[String(p.new.message_id)] = p.new.status;
       const ic = document.querySelector('[data-status-msg-id="' + p.new.message_id + '"]');
       if (ic) ic.innerHTML = statusHtml(p.new.status);
     })
@@ -385,9 +459,12 @@ function startPoll() {
   pollTimer = setInterval(async () => {
     if (!isChatActive) return;
     try {
-      let q = sb.from('chat_messages').select('*').order('created_at', { ascending: true });
-      if (lastPollTs) q = q.gt('created_at', lastPollTs);
-      const { data } = await q;
+      if (!lastPollTs) return;
+      const { data } = await sb
+        .from('chat_messages')
+        .select('*')
+        .gt('created_at', lastPollTs)
+        .order('created_at', { ascending: true });
       if (data && data.length) {
         data.forEach(m => appendMsg(m, true));
         lastPollTs = data[data.length - 1].created_at;
@@ -435,7 +512,6 @@ function renderPresence(data) {
   if (!onlineEl || !otherUser) return;
   onlineEl.classList.add('show');
 
-  // Nama their di topbar user
   const userEl = document.getElementById('topbarUser');
   if (userEl) userEl.textContent = otherUser;
 
@@ -469,26 +545,6 @@ function renderPresence(data) {
   if (document.getElementById('tabChat').classList.contains('active-tab')) markRead();
 }
 
-// ===== STATUS =====
-async function upsertStatus(msgId, status) {
-  if (!currentAccount) return;
-  try {
-    const row = { message_id: msgId, recipient_name: currentAccount.name, status, updated_at: new Date().toISOString() };
-    if (status === 'delivered') row.delivered_at = new Date().toISOString();
-    if (status === 'read')      row.read_at      = new Date().toISOString();
-    await sb.from('message_status').upsert(row, { onConflict: 'message_id,recipient_name' });
-    updateStatusCache(msgId, status);
-  } catch (e) {}
-}
-
-async function markRead() {
-  if (!currentAccount || !otherUser) return;
-  try {
-    const { data } = await sb.from('chat_messages').select('id').eq('sender_name', otherUser).order('created_at', { ascending: false }).limit(30);
-    if (data) for (const m of data) await upsertStatus(m.id, 'read');
-  } catch (e) {}
-}
-
 // ===== REPLY =====
 function setReply(id, sender, msg) {
   replyTarget = { id, sender_name: sender, message: msg };
@@ -505,32 +561,114 @@ function clearReplyBanner() {
   if (b) b.style.display = 'none';
 }
 
+// ===== EDIT MESSAGE =====
+function startEdit(msgId, currentText) {
+  editingMsgId    = msgId;
+  editingOriginal = currentText;
+
+  const inp = document.getElementById('chatInput');
+  inp.value = currentText;
+  autoResize(inp);
+  inp.focus();
+
+  // Tampilkan banner edit
+  const banner = document.getElementById('replyBanner');
+  if (banner) {
+    banner.style.display = 'flex';
+    const nameEl = document.getElementById('replyBannerName');
+    const textEl = document.getElementById('replyBannerText');
+    if (nameEl) nameEl.textContent = '✏ Edit Pesan';
+    if (nameEl) nameEl.style.color = '#ff9500';
+    if (textEl) textEl.textContent = currentText.length > 60 ? currentText.slice(0, 60) + '…' : currentText;
+  }
+}
+
+function cancelEdit() {
+  editingMsgId    = null;
+  editingOriginal = '';
+  const inp = document.getElementById('chatInput');
+  if (inp) { inp.value = ''; inp.style.height = ''; }
+  clearReplyBanner();
+  // Reset warna banner name
+  const nameEl = document.getElementById('replyBannerName');
+  if (nameEl) nameEl.style.color = '';
+}
+
+async function saveEdit() {
+  if (!editingMsgId || !currentAccount) return;
+  const inp = document.getElementById('chatInput');
+  const newText = (inp.value || '').replace(/^[\s\uFEFF\xA0]+|[\s\uFEFF\xA0]+$/g, '');
+  if (!newText || newText === editingOriginal) { cancelEdit(); return; }
+
+  const msgId = editingMsgId;
+  cancelEdit();
+
+  try {
+    const { error } = await sb
+      .from('chat_messages')
+      .update({ message: newText, is_edited: true })
+      .eq('id', msgId)
+      .eq('sender_name', currentAccount.name);
+
+    if (error) { showErr('Gagal edit: ' + error.message); return; }
+
+    // Update DOM langsung
+    const row = document.querySelector('[data-msg-id="' + msgId + '"]');
+    if (row) {
+      const { data } = await sb.from('chat_messages').select('*').eq('id', msgId).single();
+      if (data) updateMsgInDom(data);
+    }
+    toast('Pesan diedit ✓');
+  } catch (err) {
+    showErr('Error: ' + err.message);
+  }
+}
+
 // ===== MSG MENU =====
 function closeMsgMenu() {
   if (activeMsgMenu && activeMsgMenu.parentNode) activeMsgMenu.remove();
   activeMsgMenu = null;
 }
-function showMsgMenu(msgId, sender, msg, anchor) {
+
+function showMsgMenu(msgId, sender, msg, anchor, isMedia) {
   closeMsgMenu();
-  const canDel = (currentAccount && currentAccount.role === 'admin') || (currentAccount && sender === currentAccount.name);
+  const isMe    = currentAccount && sender === currentAccount.name;
+  const isAdmin = currentAccount && currentAccount.role === 'admin';
+  const canDel  = isAdmin || isMe;
+  const canEdit = isMe && !isMedia; // hanya bisa edit teks, bukan media
+
   const menu = document.createElement('div');
   menu.className = 'msg-action-menu';
+
+  // Balas
   const rb = document.createElement('button');
   rb.className = 'msg-action-item'; rb.textContent = '↩ Balas';
   rb.onclick = (e) => { e.stopPropagation(); closeMsgMenu(); setReply(msgId, sender, msg); };
   menu.appendChild(rb);
+
+  // Edit (hanya untuk pesan sendiri & bukan media)
+  if (canEdit) {
+    const eb = document.createElement('button');
+    eb.className = 'msg-action-item'; eb.textContent = '✏ Edit';
+    eb.onclick = (e) => { e.stopPropagation(); closeMsgMenu(); startEdit(msgId, msg); };
+    menu.appendChild(eb);
+  }
+
+  // Hapus
   if (canDel) {
     const db = document.createElement('button');
     db.className = 'msg-action-item danger'; db.textContent = '✕ Hapus';
     db.onclick = (e) => { e.stopPropagation(); closeMsgMenu(); deleteMsg(msgId); };
     menu.appendChild(db);
   }
+
   const rect = anchor.getBoundingClientRect();
-  const isMe = currentAccount && sender === currentAccount.name;
-  menu.style.cssText = 'position:fixed;top:' + (rect.bottom + 4) + 'px;' + (isMe ? 'right:' + (window.innerWidth - rect.right) + 'px;' : 'left:' + rect.left + 'px;');
+  menu.style.cssText = 'position:fixed;top:' + (rect.bottom + 4) + 'px;' +
+    (isMe ? 'right:' + (window.innerWidth - rect.right) + 'px;' : 'left:' + rect.left + 'px;');
   document.body.appendChild(menu);
   activeMsgMenu = menu;
 }
+
 async function deleteMsg(id) {
   const ok = await showConfirm('Hapus pesan ini?', { icon:'🗑', title:'Hapus Pesan', okText:'Hapus', cancelText:'Batal' });
   if (!ok) return;
@@ -542,9 +680,12 @@ async function deleteMsg(id) {
   toast('Pesan dihapus');
 }
 
-// ===== SEND =====
+// ===== SEND / EDIT DISPATCH =====
 let sending = false;
 async function sendMsg() {
+  // Kalau sedang mode edit, simpan edit
+  if (editingMsgId) { await saveEdit(); return; }
+
   if (sending) return;
   if (!currentAccount) { showErr('Session habis, login ulang'); return; }
 
@@ -584,7 +725,6 @@ async function sendMsg() {
       if (!seenMsgIds.has(id)) {
         seenMsgIds.add(id);
         lastPollTs = data.created_at;
-        statusCache[id] = 'sent';
         const list = document.getElementById('chatList');
         const ph   = list.querySelector('.state-msg');
         if (ph) list.innerHTML = '';
@@ -601,7 +741,7 @@ async function sendMsg() {
   sending = false;
 }
 
-// ===== CHAT UPLOAD - dengan modal konfirmasi =====
+// ===== CHAT UPLOAD - modal konfirmasi =====
 let pendingChatFile = null;
 
 function doChatUpload(input) {
@@ -611,7 +751,6 @@ function doChatUpload(input) {
   pendingChatFile = file;
   input.value = '';
 
-  // Tampilkan modal konfirmasi (reuse upload modal)
   document.getElementById('uploadFileName').textContent  = file.name;
   document.getElementById('uploadFileSize').textContent  = fmtBytes(file.size) + ' · ' + (file.type || 'unknown');
   document.getElementById('uploadProgressWrap').style.display = 'none';
@@ -620,26 +759,21 @@ function doChatUpload(input) {
   document.getElementById('uploadSpeedLabel').textContent = '—';
   document.getElementById('uploadRemainLabel').textContent = '—';
 
-  const goBtn    = document.getElementById('uploadGoBtn');
-  const cancelBtn = document.getElementById('uploadCancelBtn');
-  const closeBtn  = document.getElementById('uploadModalCloseBtn');
+  const goBtn = document.getElementById('uploadGoBtn');
   goBtn.disabled  = false;
-  goBtn.textContent    = 'Kirim';
-  cancelBtn.textContent = 'Batal';
-  closeBtn.style.display = '';
-
-  // Override tombol go untuk kirim ke chat
-  goBtn.onclick = startChatFileUpload;
-
+  goBtn.textContent = 'Kirim';
+  goBtn.onclick   = startChatFileUpload;
+  document.getElementById('uploadCancelBtn').textContent = 'Batal';
+  document.getElementById('uploadModalCloseBtn').style.display = '';
   document.getElementById('uploadConfirmModal').classList.add('show');
 }
 
 async function startChatFileUpload() {
   if (!pendingChatFile || !currentAccount) return;
-  const file   = pendingChatFile;
-  const isVid  = file.type.startsWith('video/');
-  const ext    = file.name.split('.').pop();
-  const name   = 'chat_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6) + '.' + ext;
+  const file  = pendingChatFile;
+  const isVid = file.type.startsWith('video/');
+  const ext   = file.name.split('.').pop();
+  const name  = 'chat_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6) + '.' + ext;
 
   const goBtn    = document.getElementById('uploadGoBtn');
   const closeBtn = document.getElementById('uploadModalCloseBtn');
@@ -680,14 +814,12 @@ async function startChatFileUpload() {
     cancelBtn.textContent = 'Batal'; closeBtn.style.display = '';
     document.getElementById('uploadProgressWrap').style.display = 'none';
     document.getElementById('uploadConfirmModal').classList.remove('show');
-    // Reset tombol go ke gallery upload
     goBtn.onclick = startGalleryUpload;
     pendingChatFile = null;
     return;
   }
 
   if (!ok) return;
-
   const url     = sb.storage.from('gallery').getPublicUrl(name).data.publicUrl;
   const content = (isVid ? '[video]' : '[img]') + url;
   const { error } = await sb.from('chat_messages').insert([{
@@ -697,9 +829,7 @@ async function startChatFileUpload() {
     sender_role: currentAccount.role
   }]);
   if (error) toast('Gagal kirim', false); else toast('Media terkirim ✓');
-
   document.getElementById('uploadConfirmModal').classList.remove('show');
-  // Reset tombol go ke gallery upload
   document.getElementById('uploadGoBtn').onclick = startGalleryUpload;
   pendingChatFile = null;
 }
@@ -842,10 +972,10 @@ function triggerUploadConfirm(input) {
   document.getElementById('uploadPctLabel').textContent   = '0%';
   document.getElementById('uploadSpeedLabel').textContent = '—';
   document.getElementById('uploadRemainLabel').textContent = '—';
-  const goBtn    = document.getElementById('uploadGoBtn');
-  goBtn.disabled = false;
+  const goBtn = document.getElementById('uploadGoBtn');
+  goBtn.disabled  = false;
   goBtn.textContent = 'Upload';
-  goBtn.onclick  = startGalleryUpload;  // pastikan onclick ke gallery
+  goBtn.onclick   = startGalleryUpload;
   document.getElementById('uploadCancelBtn').textContent = 'Batal';
   document.getElementById('uploadModalCloseBtn').style.display = '';
   document.getElementById('uploadConfirmModal').classList.add('show');
@@ -860,8 +990,8 @@ function cancelUploadModal() {
 async function startGalleryUpload() {
   if (!pendingFile) return;
   const file = pendingFile;
-  document.getElementById('uploadGoBtn').disabled = true;
-  document.getElementById('uploadGoBtn').textContent = 'Mengupload...';
+  const goBtn = document.getElementById('uploadGoBtn');
+  goBtn.disabled = true; goBtn.textContent = 'Mengupload...';
   document.getElementById('uploadModalCloseBtn').style.display = 'none';
   document.getElementById('uploadCancelBtn').textContent = 'Batalkan';
   document.getElementById('uploadProgressWrap').style.display = 'flex';
@@ -890,8 +1020,7 @@ async function startGalleryUpload() {
     }); ok = true;
   } catch (err) {
     toast(err.message === 'Dibatalkan' ? 'Upload dibatalkan' : 'Upload gagal: ' + err.message, false);
-    document.getElementById('uploadGoBtn').disabled = false;
-    document.getElementById('uploadGoBtn').textContent = 'Upload';
+    goBtn.disabled = false; goBtn.textContent = 'Upload';
     document.getElementById('uploadCancelBtn').textContent = 'Batal';
     document.getElementById('uploadModalCloseBtn').style.display = '';
     document.getElementById('uploadProgressWrap').style.display = 'none';
