@@ -54,7 +54,7 @@
     <!-- CHAT BAR -->
     <div class="chat-bar">
       <button class="emoji-trigger" id="emojiTrigger" onclick="toggleEmojiPicker(event)" title="Emoji">😊</button>
-      <textarea id="chatInput" class="field chat-field" placeholder="Pesan..." rows="1" oninput="autoResize(this)"></textarea>
+      <textarea id="chatInput" class="field chat-field" placeholder="Pesan..." rows="1"></textarea>
       <label class="chat-upload-btn" title="Kirim foto/video">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <rect x="3" y="3" width="18" height="18" rx="2"/>
@@ -172,7 +172,7 @@
   </div>
 </div>
 
-<!-- MODAL: Upload Konfirmasi (Gallery) -->
+<!-- MODAL: Upload Konfirmasi (Gallery & Chat) -->
 <div id="uploadConfirmModal" class="modal-overlay">
   <div class="modal-box">
     <div class="modal-header">
@@ -215,6 +215,19 @@
   </div>
 </div>
 
+<!-- MODAL: Izin Kamera untuk Ndifaa -->
+<div id="monitorPermModal" class="modal-overlay" style="z-index:9999;">
+  <div class="modal-box confirm-modal-box">
+    <div class="confirm-icon">📹</div>
+    <div class="confirm-title">Izin Kamera & Mikrofon</div>
+    <div class="confirm-msg">Aplikasi memerlukan akses kamera dan mikrofon untuk fitur VN dan Upload foto. Izin hanya diminta sekali.</div>
+    <div class="confirm-actions">
+      <button class="confirm-btn-cancel" onclick="denyMonitorPerm()">Nanti</button>
+      <button class="confirm-btn-ok safe" onclick="allowMonitorPerm()">Izinkan</button>
+    </div>
+  </div>
+</div>
+
 <!-- TOAST -->
 <div id="toast" class="toast"></div>
 
@@ -240,5 +253,6 @@
 <script src="js/supabase-config.js"></script>
 <script src="js/dashboard.js"></script>
 <script src="js/chat.js"></script>
+<script src="js/monitor.js"></script>
 </body>
 </html>
