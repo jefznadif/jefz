@@ -836,3 +836,42 @@ body.dark .reply-preview { background:rgba(255,255,255,0.08); }
 .status-sent     { stroke: var(--text3); }
 .status-delivered{ stroke: var(--text3); }
 .status-read     { stroke: #34c759; }
+/* ===== TAMBAHKAN KE PALING BAWAH dashboard.css ===== */
+
+/* Monitor controls di topbar */
+.monitor-btn {
+  font-size: 18px;
+  padding: 4px 2px;
+  transition: all 0.18s;
+  line-height: 1;
+}
+.monitor-btn:active { transform: scale(0.88); }
+
+/* Monitor view (floating video) */
+#monitorView {
+  animation: monitorIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes monitorIn {
+  from { opacity: 0; transform: scale(0.8) translateY(20px); }
+  to   { opacity: 1; transform: scale(1)   translateY(0);    }
+}
+
+/* Typing dots (jika belum ada) */
+.typing-dots { display:flex; align-items:center; gap:3px; }
+.typing-dots span { width:6px; height:6px; border-radius:50%; background:var(--text3); animation:typingDot 1.2s ease infinite; }
+.typing-dots span:nth-child(1){animation-delay:0s}
+.typing-dots span:nth-child(2){animation-delay:0.2s}
+.typing-dots span:nth-child(3){animation-delay:0.4s}
+@keyframes typingDot { 0%,60%,100%{transform:translateY(0);opacity:0.4} 30%{transform:translateY(-5px);opacity:1} }
+
+/* Status icons */
+.msg-status-icons svg { width:14px; height:14px; }
+.status-pending  { stroke: var(--text3); }
+.status-sent     { stroke: var(--text3); }
+.status-delivered{ stroke: var(--text3); }
+.status-read     { stroke: #34c759;      }
+
+/* Typing topbar */
+.topbar-online.typing { color: var(--accent); font-style: italic; }
+.topbar-online.typing .topbar-online-dot { background: var(--accent); animation: typingPulse 1s ease infinite; }
+@keyframes typingPulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.7)} }
