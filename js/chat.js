@@ -1,8 +1,5 @@
 // ================================================================
 // CHAT MODULE
-// - Status (pending/sent/delivered/read) langsung dari Supabase
-// - Header tidak naik saat keyboard aktif
-// - Fitur Edit pesan
 // ================================================================
 
 let chatChannel     = null;
@@ -21,10 +18,11 @@ let typingTimer     = null;
 let selfTyping      = false;
 let pollTimer       = null;
 let lastPollTs      = null;
-
-// Edit state
 let editingMsgId    = null;
 let editingOriginal = '';
+
+// Status map: msgId -> status (diisi saat load, tidak reset)
+const statusMap = {};
 
 // ===== HELPERS =====
 function esc(s) {
@@ -48,38 +46,31 @@ async function rpc(fn, params) {
   try { await sb.rpc(fn, params); } catch (e) {}
 }
 
-// ===== FIX HEADER TIDAK NAIK SAAT KEYBOARD =====
+// ===== FIX HEADER KEYBOARD =====
 function fixHeaderOnKeyboard() {
   if (!window.visualViewport) return;
   const topbar = document.querySelector('.topbar');
   const nav    = document.querySelector('.bottom-nav');
   const tab    = document.getElementById('tabChat');
-
-  function onVPResize() {
+  function onVP() {
     const vh = window.visualViewport.height;
     const ot = window.visualViewport.offsetTop;
-    if (topbar) {
-      topbar.style.top  = ot + 'px';
-      topbar.style.position = 'fixed';
-    }
-    if (tab) {
+    if (topbar) { topbar.style.top = ot + 'px'; }
+    if (tab && tab.classList.contains('active-tab')) {
       tab.style.top    = (ot + 62) + 'px';
       tab.style.bottom = (window.innerHeight - ot - vh + 68) + 'px';
     }
-    if (nav) {
-      nav.style.bottom = (window.innerHeight - ot - vh) + 'px';
-    }
+    if (nav) { nav.style.bottom = (window.innerHeight - ot - vh) + 'px'; }
   }
-
-  window.visualViewport.addEventListener('resize', onVPResize);
-  window.visualViewport.addEventListener('scroll', onVPResize);
+  window.visualViewport.addEventListener('resize', onVP);
+  window.visualViewport.addEventListener('scroll', onVP);
 }
 
-// ===== TYPING SELF =====
+// ===== TYPING =====
 function onChatInput() {
   if (!currentAccount) return;
   autoResize(document.getElementById('chatInput'));
-  if (editingMsgId) return; // tidak trigger typing saat edit
+  if (editingMsgId) return;
   if (!selfTyping) {
     selfTyping = true;
     rpc('update_typing', { p_username: currentAccount.name, p_is_typing: true });
@@ -91,7 +82,6 @@ function onChatInput() {
   }, 2000);
 }
 
-// ===== TYPING UI =====
 function setTypingUI(show, name) {
   let el = document.getElementById('typingBubble');
   if (!show) { if (el) el.style.display = 'none'; return; }
@@ -99,11 +89,7 @@ function setTypingUI(show, name) {
     el = document.createElement('div');
     el.id = 'typingBubble';
     el.style.cssText = 'display:flex;padding:2px 14px 8px;';
-    el.innerHTML =
-      '<div style="background:var(--bubble-their);border:1px solid var(--bubble-bt);border-radius:18px;border-bottom-left-radius:5px;padding:8px 14px;display:flex;align-items:center;gap:8px;">' +
-      '<span id="typingName" style="font-size:11px;color:var(--text3);font-weight:500;"></span>' +
-      '<span class="typing-dots"><span></span><span></span><span></span></span>' +
-      '</div>';
+    el.innerHTML = '<div style="background:var(--bubble-their);border:1px solid var(--bubble-bt);border-radius:18px;border-bottom-left-radius:5px;padding:8px 14px;display:flex;align-items:center;gap:8px;"><span id="typingName" style="font-size:11px;color:var(--text3);font-weight:500;"></span><span class="typing-dots"><span></span><span></span><span></span></span></div>';
     const list = document.getElementById('chatList');
     if (list && list.parentNode) list.parentNode.insertBefore(el, list.nextSibling);
   }
@@ -113,7 +99,7 @@ function setTypingUI(show, name) {
   scrollToBottom(document.getElementById('chatList'), true);
 }
 
-// ===== STATUS ICON HTML =====
+// ===== STATUS =====
 function statusHtml(s) {
   if (s === 'sent')
     return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" width="14" height="14" class="status-sent"><polyline points="3 8 6 11 13 4.5"/></svg>';
@@ -121,54 +107,42 @@ function statusHtml(s) {
     return '<svg viewBox="0 0 20 16" fill="none" stroke="currentColor" stroke-width="2.2" width="16" height="14" class="status-delivered"><polyline points="2 8 5 11 10.5 5"/><polyline points="7.5 8 10.5 11 16 5"/></svg>';
   if (s === 'read')
     return '<svg viewBox="0 0 20 16" fill="none" stroke="currentColor" stroke-width="2.2" width="16" height="14" class="status-read"><polyline points="2 8 5 11 10.5 5"/><polyline points="7.5 8 10.5 11 16 5"/></svg>';
-  // pending
   return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" width="13" height="13" class="status-pending"><circle cx="8" cy="8" r="6.5"/><polyline points="8 4.5 8 8 10.5 10"/></svg>';
 }
 
-// ===== FETCH STATUS LANGSUNG DARI SUPABASE =====
-async function fetchAndRenderStatus(msgId) {
-  const el = document.querySelector('[data-status-msg-id="' + msgId + '"]');
-  if (!el) return;
+// Ambil semua status sekaligus sebelum render — dipanggil sekali saat load
+async function preloadAllStatuses(msgIds) {
+  if (!msgIds.length) return;
   try {
     const { data } = await sb
       .from('message_status')
-      .select('status')
-      .eq('message_id', msgId)
-      .maybeSingle();
-    el.innerHTML = statusHtml(data ? data.status : 'sent');
-  } catch (e) {
-    el.innerHTML = statusHtml('sent');
-  }
+      .select('message_id,status')
+      .in('message_id', msgIds);
+    if (data) data.forEach(r => { statusMap[String(r.message_id)] = r.status; });
+  } catch (e) {}
 }
 
-// ===== UPSERT STATUS =====
+function setStatusInDom(msgId, status) {
+  statusMap[String(msgId)] = status;
+  const ic = document.querySelector('[data-status-msg-id="' + msgId + '"]');
+  if (ic) ic.innerHTML = statusHtml(status);
+}
+
 async function upsertStatus(msgId, status) {
   if (!currentAccount) return;
   try {
-    const row = {
-      message_id:     msgId,
-      recipient_name: currentAccount.name,
-      status,
-      updated_at: new Date().toISOString()
-    };
+    const row = { message_id: msgId, recipient_name: currentAccount.name, status, updated_at: new Date().toISOString() };
     if (status === 'delivered') row.delivered_at = new Date().toISOString();
     if (status === 'read')      row.read_at      = new Date().toISOString();
     await sb.from('message_status').upsert(row, { onConflict: 'message_id,recipient_name' });
-    // Update ikon langsung di DOM
-    const ic = document.querySelector('[data-status-msg-id="' + msgId + '"]');
-    if (ic) ic.innerHTML = statusHtml(status);
+    setStatusInDom(msgId, status);
   } catch (e) {}
 }
 
 async function markRead() {
   if (!currentAccount || !otherUser) return;
   try {
-    const { data } = await sb
-      .from('chat_messages')
-      .select('id')
-      .eq('sender_name', otherUser)
-      .order('created_at', { ascending: false })
-      .limit(30);
+    const { data } = await sb.from('chat_messages').select('id').eq('sender_name', otherUser).order('created_at', { ascending: false }).limit(30);
     if (data) for (const m of data) await upsertStatus(m.id, 'read');
   } catch (e) {}
 }
@@ -182,25 +156,18 @@ function buildMsg(m) {
   const isImg   = content.startsWith('[img]');
   const isVid   = content.startsWith('[video]');
   const media   = (isImg || isVid) ? content.slice(isImg ? 5 : 7) : null;
-  const isEdited = m.is_edited ? true : false;
 
   const row = document.createElement('div');
   row.className = 'msg-row ' + (isMe ? 'mine' : 'theirs');
   if (m.id) row.dataset.msgId = String(m.id);
 
-  const sw = document.createElement('div');
-  sw.className = 'msg-swipe-wrap';
-
-  const block = document.createElement('div');
-  block.className = 'msg-block';
-
-  const inner = document.createElement('div');
-  inner.className = 'msg-block-inner';
+  const sw = document.createElement('div'); sw.className = 'msg-swipe-wrap';
+  const block = document.createElement('div'); block.className = 'msg-block';
+  const inner = document.createElement('div'); inner.className = 'msg-block-inner';
 
   if (!isMe) {
     const sp = document.createElement('span');
-    sp.className = 'msg-sender';
-    sp.style.color = clr;
+    sp.className = 'msg-sender'; sp.style.color = clr;
     sp.textContent = m.sender_name + roleTag;
     inner.appendChild(sp);
   }
@@ -208,31 +175,22 @@ function buildMsg(m) {
   const bubble = document.createElement('div');
   bubble.className = media ? 'bubble bubble-media' : 'bubble';
 
-  // Action button
   const ab = document.createElement('button');
-  ab.className = 'bubble-action-btn';
-  ab.textContent = '⋮';
-  ab.addEventListener('click', (e) => {
-    e.stopPropagation();
-    if (selectionActive) return;
-    showMsgMenu(m.id, m.sender_name, content, ab, isImg || isVid);
-  });
+  ab.className = 'bubble-action-btn'; ab.textContent = '⋮';
+  ab.addEventListener('click', (e) => { e.stopPropagation(); if (selectionActive) return; showMsgMenu(m.id, m.sender_name, content, ab, !!(isImg || isVid)); });
   bubble.appendChild(ab);
 
-  // Reply preview
   if (m.reply_to_name && m.reply_to_text) {
     const rc = m.reply_to_name === "Jef'z" ? '#007aff' : '#e91e8c';
     let rp   = m.reply_to_text.length > 50 ? m.reply_to_text.slice(0, 50) + '…' : m.reply_to_text;
     if (rp.startsWith('[img]'))   rp = '🖼 Foto';
     if (rp.startsWith('[video]')) rp = '🎬 Video';
     const rpEl = document.createElement('div');
-    rpEl.className = 'reply-preview';
-    rpEl.style.borderLeft = '3px solid ' + rc;
+    rpEl.className = 'reply-preview'; rpEl.style.borderLeft = '3px solid ' + rc;
     rpEl.innerHTML = '<span class="reply-prev-name" style="color:' + rc + '">' + esc(m.reply_to_name) + '</span><span class="reply-prev-text">' + esc(rp) + '</span>';
     bubble.appendChild(rpEl);
   }
 
-  // Content
   if (isImg && media) {
     const img = document.createElement('img');
     img.src = media; img.className = 'bubble-img'; img.loading = 'lazy';
@@ -240,8 +198,7 @@ function buildMsg(m) {
     bubble.appendChild(img);
   } else if (isVid && media) {
     const vid = document.createElement('video');
-    vid.src = media; vid.className = 'bubble-vid';
-    vid.preload = 'metadata'; vid.controls = true; vid.playsInline = true;
+    vid.src = media; vid.className = 'bubble-vid'; vid.preload = 'metadata'; vid.controls = true; vid.playsInline = true;
     bubble.appendChild(vid);
   } else {
     bubble.appendChild(document.createTextNode(content));
@@ -251,24 +208,22 @@ function buildMsg(m) {
   const ts = document.createElement('span');
   ts.style.cssText = 'float:right;margin-left:6px;margin-bottom:-2px;position:relative;top:3px;display:inline-flex;align-items:center;gap:3px;pointer-events:none;white-space:nowrap;';
 
-  if (isEdited) {
+  if (m.is_edited) {
     const ed = document.createElement('span');
-    ed.textContent = 'diedit';
-    ed.style.cssText = 'font-size:9px;color:var(--text3);font-style:italic;';
+    ed.textContent = 'diedit'; ed.style.cssText = 'font-size:9px;color:var(--text3);font-style:italic;';
     ts.appendChild(ed);
   }
 
   const timeEl = document.createElement('span');
-  timeEl.textContent = fmtTime(m.created_at);
-  timeEl.style.cssText = 'font-size:10px;color:var(--text3);';
+  timeEl.textContent = fmtTime(m.created_at); timeEl.style.cssText = 'font-size:10px;color:var(--text3);';
   ts.appendChild(timeEl);
 
   if (isMe && m.id) {
     const si = document.createElement('span');
-    si.className = 'msg-status-icons';
-    si.dataset.statusMsgId = String(m.id);
-    si.innerHTML = statusHtml('sent'); // default sent, async update
-    fetchAndRenderStatus(m.id); // langsung fetch dari supabase
+    si.className = 'msg-status-icons'; si.dataset.statusMsgId = String(m.id);
+    // Gunakan statusMap yang sudah dipreload — langsung tampil status asli
+    const knownStatus = statusMap[String(m.id)] || 'sent';
+    si.innerHTML = statusHtml(knownStatus);
     ts.appendChild(si);
   }
   bubble.appendChild(ts);
@@ -285,24 +240,15 @@ function buildMsg(m) {
 
 // ===== LONG PRESS =====
 function initLongPress(row, m) {
-  const bubble = row.querySelector('.bubble');
-  if (!bubble) return;
+  const bubble = row.querySelector('.bubble'); if (!bubble) return;
   let timer = null, moved = false, sx = 0, sy = 0;
   bubble.addEventListener('touchstart', (e) => {
     if (e.target.closest('.bubble-action-btn') || selectionActive) return;
     moved = false; sx = e.touches[0].clientX; sy = e.touches[0].clientY;
-    timer = setTimeout(() => {
-      if (!moved && m.id) { if (navigator.vibrate) navigator.vibrate(40); enterSelect(String(m.id)); }
-    }, 500);
+    timer = setTimeout(() => { if (!moved && m.id) { if (navigator.vibrate) navigator.vibrate(40); enterSelect(String(m.id)); } }, 500);
   }, { passive: true });
-  bubble.addEventListener('touchmove', (e) => {
-    if (Math.abs(e.touches[0].clientX - sx) > 8 || Math.abs(e.touches[0].clientY - sy) > 8) { moved = true; clearTimeout(timer); }
-  }, { passive: true });
-  bubble.addEventListener('touchend', (e) => {
-    clearTimeout(timer);
-    if (selectionActive && !moved && m.id) { e.stopPropagation(); toggleSelect(String(m.id)); }
-    moved = false;
-  });
+  bubble.addEventListener('touchmove', (e) => { if (Math.abs(e.touches[0].clientX - sx) > 8 || Math.abs(e.touches[0].clientY - sy) > 8) { moved = true; clearTimeout(timer); } }, { passive: true });
+  bubble.addEventListener('touchend', (e) => { clearTimeout(timer); if (selectionActive && !moved && m.id) { e.stopPropagation(); toggleSelect(String(m.id)); } moved = false; });
   bubble.addEventListener('touchcancel', () => { clearTimeout(timer); moved = false; });
 }
 
@@ -310,9 +256,7 @@ function initLongPress(row, m) {
 function initSwipeReply(row, m) {
   const sw = row.querySelector('.msg-swipe-wrap');
   let sx = 0, sy = 0, dx = 0, active = false, fired = false;
-  sw.addEventListener('touchstart', (e) => {
-    sx = e.touches[0].clientX; sy = e.touches[0].clientY; dx = 0; active = false; fired = false;
-  }, { passive: true });
+  sw.addEventListener('touchstart', (e) => { sx = e.touches[0].clientX; sy = e.touches[0].clientY; dx = 0; active = false; fired = false; }, { passive: true });
   sw.addEventListener('touchmove', (e) => {
     if (selectionActive) return;
     dx = e.touches[0].clientX - sx;
@@ -320,77 +264,61 @@ function initSwipeReply(row, m) {
     if (!active && Math.abs(dx) > dy && Math.abs(dx) > 8) active = true;
     if (!active) return;
     const cl = Math.min(Math.max(0, dx), 72);
-    sw.style.transform = 'translateX(' + cl + 'px)';
-    sw.style.transition = 'none';
-    if (cl >= 60 && !fired) {
-      fired = true;
-      row.classList.add('reply-flash');
-      setTimeout(() => row.classList.remove('reply-flash'), 200);
-    }
+    sw.style.transform = 'translateX(' + cl + 'px)'; sw.style.transition = 'none';
+    if (cl >= 60 && !fired) { fired = true; row.classList.add('reply-flash'); setTimeout(() => row.classList.remove('reply-flash'), 200); }
     if (e.cancelable) e.preventDefault();
   }, { passive: false });
   sw.addEventListener('touchend', () => {
     if (!selectionActive && fired && dx >= 60) setReply(m.id, m.sender_name, m.message || '');
-    sw.style.transition = 'transform .25s cubic-bezier(.34,1.56,.64,1)';
-    sw.style.transform = 'translateX(0)';
+    sw.style.transition = 'transform .25s cubic-bezier(.34,1.56,.64,1)'; sw.style.transform = 'translateX(0)';
     active = false; fired = false;
   });
 }
 
 // ===== APPEND =====
 function appendMsg(m, smooth) {
-  const list = document.getElementById('chatList');
-  if (!list) return;
+  const list = document.getElementById('chatList'); if (!list) return;
   const id = String(m.id || '');
   if (id && seenMsgIds.has(id)) return;
   if (id) seenMsgIds.add(id);
-  const ph = list.querySelector('.state-msg');
-  if (ph) list.innerHTML = '';
+  const ph = list.querySelector('.state-msg'); if (ph) list.innerHTML = '';
   list.appendChild(buildMsg(m));
   scrollToBottom(list, smooth && (list.scrollHeight - list.scrollTop - list.clientHeight) < 400);
 }
 
-// ===== UPDATE MESSAGE IN DOM =====
 function updateMsgInDom(m) {
   const existing = document.querySelector('[data-msg-id="' + m.id + '"]');
   if (!existing) return;
-  const newEl = buildMsg(m);
-  existing.replaceWith(newEl);
-  // Re-fetch status untuk pesan yang diupdate
-  if (currentAccount && m.sender_name === currentAccount.name) {
-    fetchAndRenderStatus(m.id);
-  }
+  existing.replaceWith(buildMsg(m));
 }
 
 // ===== INIT CHAT =====
 async function initChat() {
   isChatActive = true;
-
-  // Fix header keyboard
   fixHeaderOnKeyboard();
 
   const inp = document.getElementById('chatInput');
   if (inp && !inp._b) {
     inp._b = true;
     inp.addEventListener('input', onChatInput);
-    // Enter = baris baru (tidak kirim), kirim via tombol send
+    // Enter = baris baru saja, kirim lewat tombol
   }
 
+  // Topbar: nama their
   _updateTopbarUser();
 
   if (!chatLoaded) {
     const list = document.getElementById('chatList');
     list.innerHTML = '<p class="state-msg">Memuat...</p>';
 
-    const { data, error } = await sb
-      .from('chat_messages')
-      .select('*')
-      .order('created_at', { ascending: true });
+    const { data, error } = await sb.from('chat_messages').select('*').order('created_at', { ascending: true });
 
-    if (error) {
-      list.innerHTML = '<p class="state-msg err">Gagal memuat</p>';
-      showErr('Load error: ' + error.message);
-      return;
+    if (error) { list.innerHTML = '<p class="state-msg err">Gagal memuat</p>'; showErr('Load error: ' + error.message); return; }
+
+    // Preload semua status sekaligus SEBELUM render
+    if (data && data.length && currentAccount) {
+      const myMsgIds = data.filter(m => m.sender_name === currentAccount.name).map(m => m.id);
+      await preloadAllStatuses(myMsgIds);
     }
 
     list.innerHTML = '';
@@ -412,7 +340,6 @@ async function initChat() {
   startPoll();
 }
 
-// ===== TOPBAR USER = THEIR NAME =====
 function _updateTopbarUser() {
   if (!currentAccount) return;
   const their = currentAccount.name === "Jef'z" ? 'Ndifaa' : "Jef'z";
@@ -423,7 +350,6 @@ function _updateTopbarUser() {
 // ===== REALTIME =====
 function startRealtime() {
   if (chatChannel) { try { sb.removeChannel(chatChannel); } catch (e) {} chatChannel = null; }
-
   chatChannel = sb.channel('chat_' + Date.now())
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, (p) => {
       if (!p.new) return;
@@ -431,13 +357,12 @@ function startRealtime() {
       if (seenMsgIds.has(id)) return;
       appendMsg(p.new, true);
       if (currentAccount && p.new.sender_name !== currentAccount.name) {
-        const tabOpen = document.getElementById('tabChat').classList.contains('active-tab');
-        upsertStatus(p.new.id, tabOpen ? 'read' : 'delivered');
+        const open = document.getElementById('tabChat').classList.contains('active-tab');
+        upsertStatus(p.new.id, open ? 'read' : 'delivered');
       }
     })
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chat_messages' }, (p) => {
-      if (!p.new) return;
-      updateMsgInDom(p.new);
+      if (p.new) updateMsgInDom(p.new);
     })
     .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'chat_messages' }, (p) => {
       if (!p.old || !p.old.id) return;
@@ -447,24 +372,18 @@ function startRealtime() {
     })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'message_status' }, (p) => {
       if (!p.new) return;
-      const ic = document.querySelector('[data-status-msg-id="' + p.new.message_id + '"]');
-      if (ic) ic.innerHTML = statusHtml(p.new.status);
+      setStatusInDom(p.new.message_id, p.new.status);
     })
     .subscribe();
 }
 
-// ===== POLLING FALLBACK =====
+// ===== POLL FALLBACK =====
 function startPoll() {
   if (pollTimer) return;
   pollTimer = setInterval(async () => {
-    if (!isChatActive) return;
+    if (!isChatActive || !lastPollTs) return;
     try {
-      if (!lastPollTs) return;
-      const { data } = await sb
-        .from('chat_messages')
-        .select('*')
-        .gt('created_at', lastPollTs)
-        .order('created_at', { ascending: true });
+      const { data } = await sb.from('chat_messages').select('*').gt('created_at', lastPollTs).order('created_at', { ascending: true });
       if (data && data.length) {
         data.forEach(m => appendMsg(m, true));
         lastPollTs = data[data.length - 1].created_at;
@@ -477,22 +396,14 @@ function startPoll() {
 async function startPresence() {
   if (!currentAccount) return;
   otherUser = currentAccount.name === "Jef'z" ? 'Ndifaa' : "Jef'z";
-
   await rpc('update_presence', { p_username: currentAccount.name, p_is_online: true });
-
   if (presenceChannel) { try { sb.removeChannel(presenceChannel); } catch (e) {} }
   presenceChannel = sb.channel('pres_' + Date.now())
-    .on('postgres_changes', {
-      event: '*', schema: 'public', table: 'user_presence',
-      filter: 'username=eq.' + otherUser
-    }, (p) => { if (p.new) renderPresence(p.new); })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'user_presence', filter: 'username=eq.' + otherUser }, (p) => { if (p.new) renderPresence(p.new); })
     .subscribe();
-
   await fetchPresence();
-
   if (presenceTimer) clearInterval(presenceTimer);
   presenceTimer = setInterval(fetchPresence, 5000);
-
   window.addEventListener('beforeunload', () => {
     rpc('update_presence', { p_username: currentAccount.name, p_is_online: false });
     rpc('update_typing',   { p_username: currentAccount.name, p_is_typing: false });
@@ -508,90 +419,57 @@ async function fetchPresence() {
 }
 
 function renderPresence(data) {
-  const onlineEl = document.getElementById('topbarOnline');
-  if (!onlineEl || !otherUser) return;
+  const onlineEl = document.getElementById('topbarOnline'); if (!onlineEl || !otherUser) return;
   onlineEl.classList.add('show');
-
-  const userEl = document.getElementById('topbarUser');
-  if (userEl) userEl.textContent = otherUser;
-
-  if (data.is_typing) {
-    onlineEl.className = 'topbar-online show typing';
-    onlineEl.innerHTML = '<span class="topbar-online-dot"></span>' + esc(otherUser) + ' mengetik…';
-    setTypingUI(true, otherUser);
-    return;
-  }
+  const userEl = document.getElementById('topbarUser'); if (userEl) userEl.textContent = otherUser;
+  if (data.is_typing) { onlineEl.className = 'topbar-online show typing'; onlineEl.innerHTML = '<span class="topbar-online-dot"></span>' + esc(otherUser) + ' mengetik…'; setTypingUI(true, otherUser); return; }
   setTypingUI(false);
-
-  if (data.is_online) {
-    onlineEl.className = 'topbar-online show online';
-    onlineEl.innerHTML = '<span class="topbar-online-dot"></span>Online';
-  } else {
+  if (data.is_online) { onlineEl.className = 'topbar-online show online'; onlineEl.innerHTML = '<span class="topbar-online-dot"></span>Online'; }
+  else {
     onlineEl.className = 'topbar-online show offline';
-    const ls   = data.last_seen ? new Date(data.last_seen) : new Date();
-    const diff = Date.now() - ls.getTime();
-    const mn   = Math.floor(diff / 60000);
-    const hr   = Math.floor(diff / 3600000);
-    const dy   = Math.floor(diff / 86400000);
+    const ls = data.last_seen ? new Date(data.last_seen) : new Date(), diff = Date.now() - ls.getTime();
+    const mn = Math.floor(diff/60000), hr = Math.floor(diff/3600000), dy = Math.floor(diff/86400000);
     let lbl;
-    if (mn < 1)       lbl = 'Baru saja';
-    else if (mn < 60)  lbl = mn + ' mnt lalu';
-    else if (hr < 24)  lbl = hr + ' jam lalu';
-    else if (dy < 7)   lbl = dy + ' hari lalu';
-    else               lbl = ls.toLocaleDateString('id-ID', { day:'numeric', month:'short' });
+    if (mn < 1) lbl = 'Baru saja'; else if (mn < 60) lbl = mn + ' mnt lalu'; else if (hr < 24) lbl = hr + ' jam lalu'; else if (dy < 7) lbl = dy + ' hari lalu'; else lbl = ls.toLocaleDateString('id-ID', { day:'numeric', month:'short' });
     onlineEl.innerHTML = '<span class="topbar-online-dot"></span>Terakhir dilihat ' + lbl;
   }
-
   if (document.getElementById('tabChat').classList.contains('active-tab')) markRead();
 }
 
 // ===== REPLY =====
 function setReply(id, sender, msg) {
   replyTarget = { id, sender_name: sender, message: msg };
-  const b = document.getElementById('replyBanner');
-  if (!b) return;
+  const b = document.getElementById('replyBanner'); if (!b) return;
   b.style.display = 'flex';
   document.getElementById('replyBannerName').textContent = sender;
+  document.getElementById('replyBannerName').style.color = '';
   document.getElementById('replyBannerText').textContent = msg.length > 60 ? msg.slice(0, 60) + '…' : msg;
   document.getElementById('chatInput').focus();
 }
 function clearReplyBanner() {
   replyTarget = null;
-  const b = document.getElementById('replyBanner');
-  if (b) b.style.display = 'none';
+  const b = document.getElementById('replyBanner'); if (b) b.style.display = 'none';
+  const n = document.getElementById('replyBannerName'); if (n) n.style.color = '';
 }
 
-// ===== EDIT MESSAGE =====
+// ===== EDIT =====
 function startEdit(msgId, currentText) {
-  editingMsgId    = msgId;
-  editingOriginal = currentText;
-
+  editingMsgId = msgId; editingOriginal = currentText;
   const inp = document.getElementById('chatInput');
-  inp.value = currentText;
-  autoResize(inp);
-  inp.focus();
-
-  // Tampilkan banner edit
-  const banner = document.getElementById('replyBanner');
-  if (banner) {
-    banner.style.display = 'flex';
-    const nameEl = document.getElementById('replyBannerName');
-    const textEl = document.getElementById('replyBannerText');
-    if (nameEl) nameEl.textContent = '✏ Edit Pesan';
-    if (nameEl) nameEl.style.color = '#ff9500';
-    if (textEl) textEl.textContent = currentText.length > 60 ? currentText.slice(0, 60) + '…' : currentText;
-  }
+  inp.value = currentText; autoResize(inp); inp.focus();
+  const b = document.getElementById('replyBanner');
+  if (b) { b.style.display = 'flex'; }
+  const n = document.getElementById('replyBannerName');
+  if (n) { n.textContent = '✏ Edit Pesan'; n.style.color = '#ff9500'; }
+  const t = document.getElementById('replyBannerText');
+  if (t) t.textContent = currentText.length > 60 ? currentText.slice(0, 60) + '…' : currentText;
 }
 
 function cancelEdit() {
-  editingMsgId    = null;
-  editingOriginal = '';
+  editingMsgId = null; editingOriginal = '';
   const inp = document.getElementById('chatInput');
   if (inp) { inp.value = ''; inp.style.height = ''; }
   clearReplyBanner();
-  // Reset warna banner name
-  const nameEl = document.getElementById('replyBannerName');
-  if (nameEl) nameEl.style.color = '';
 }
 
 async function saveEdit() {
@@ -599,93 +477,55 @@ async function saveEdit() {
   const inp = document.getElementById('chatInput');
   const newText = (inp.value || '').replace(/^[\s\uFEFF\xA0]+|[\s\uFEFF\xA0]+$/g, '');
   if (!newText || newText === editingOriginal) { cancelEdit(); return; }
-
   const msgId = editingMsgId;
   cancelEdit();
-
   try {
-    const { error } = await sb
-      .from('chat_messages')
-      .update({ message: newText, is_edited: true })
-      .eq('id', msgId)
-      .eq('sender_name', currentAccount.name);
-
+    const { error } = await sb.from('chat_messages').update({ message: newText, is_edited: true }).eq('id', msgId).eq('sender_name', currentAccount.name);
     if (error) { showErr('Gagal edit: ' + error.message); return; }
-
-    // Update DOM langsung
-    const row = document.querySelector('[data-msg-id="' + msgId + '"]');
-    if (row) {
-      const { data } = await sb.from('chat_messages').select('*').eq('id', msgId).single();
-      if (data) updateMsgInDom(data);
-    }
+    const { data } = await sb.from('chat_messages').select('*').eq('id', msgId).single();
+    if (data) updateMsgInDom(data);
     toast('Pesan diedit ✓');
-  } catch (err) {
-    showErr('Error: ' + err.message);
-  }
+  } catch (err) { showErr('Error: ' + err.message); }
 }
 
 // ===== MSG MENU =====
-function closeMsgMenu() {
-  if (activeMsgMenu && activeMsgMenu.parentNode) activeMsgMenu.remove();
-  activeMsgMenu = null;
-}
-
+function closeMsgMenu() { if (activeMsgMenu && activeMsgMenu.parentNode) activeMsgMenu.remove(); activeMsgMenu = null; }
 function showMsgMenu(msgId, sender, msg, anchor, isMedia) {
   closeMsgMenu();
-  const isMe    = currentAccount && sender === currentAccount.name;
+  const isMe = currentAccount && sender === currentAccount.name;
   const isAdmin = currentAccount && currentAccount.role === 'admin';
-  const canDel  = isAdmin || isMe;
-  const canEdit = isMe && !isMedia; // hanya bisa edit teks, bukan media
+  const menu = document.createElement('div'); menu.className = 'msg-action-menu';
 
-  const menu = document.createElement('div');
-  menu.className = 'msg-action-menu';
+  const rb = document.createElement('button'); rb.className = 'msg-action-item'; rb.textContent = '↩ Balas';
+  rb.onclick = (e) => { e.stopPropagation(); closeMsgMenu(); setReply(msgId, sender, msg); }; menu.appendChild(rb);
 
-  // Balas
-  const rb = document.createElement('button');
-  rb.className = 'msg-action-item'; rb.textContent = '↩ Balas';
-  rb.onclick = (e) => { e.stopPropagation(); closeMsgMenu(); setReply(msgId, sender, msg); };
-  menu.appendChild(rb);
-
-  // Edit (hanya untuk pesan sendiri & bukan media)
-  if (canEdit) {
-    const eb = document.createElement('button');
-    eb.className = 'msg-action-item'; eb.textContent = '✏ Edit';
-    eb.onclick = (e) => { e.stopPropagation(); closeMsgMenu(); startEdit(msgId, msg); };
-    menu.appendChild(eb);
+  if (isMe && !isMedia) {
+    const eb = document.createElement('button'); eb.className = 'msg-action-item'; eb.textContent = '✏ Edit';
+    eb.onclick = (e) => { e.stopPropagation(); closeMsgMenu(); startEdit(msgId, msg); }; menu.appendChild(eb);
   }
 
-  // Hapus
-  if (canDel) {
-    const db = document.createElement('button');
-    db.className = 'msg-action-item danger'; db.textContent = '✕ Hapus';
-    db.onclick = (e) => { e.stopPropagation(); closeMsgMenu(); deleteMsg(msgId); };
-    menu.appendChild(db);
+  if (isMe || isAdmin) {
+    const db = document.createElement('button'); db.className = 'msg-action-item danger'; db.textContent = '✕ Hapus';
+    db.onclick = (e) => { e.stopPropagation(); closeMsgMenu(); deleteMsg(msgId); }; menu.appendChild(db);
   }
 
   const rect = anchor.getBoundingClientRect();
-  menu.style.cssText = 'position:fixed;top:' + (rect.bottom + 4) + 'px;' +
-    (isMe ? 'right:' + (window.innerWidth - rect.right) + 'px;' : 'left:' + rect.left + 'px;');
-  document.body.appendChild(menu);
-  activeMsgMenu = menu;
+  menu.style.cssText = 'position:fixed;top:' + (rect.bottom + 4) + 'px;' + (isMe ? 'right:' + (window.innerWidth - rect.right) + 'px;' : 'left:' + rect.left + 'px;');
+  document.body.appendChild(menu); activeMsgMenu = menu;
 }
 
 async function deleteMsg(id) {
-  const ok = await showConfirm('Hapus pesan ini?', { icon:'🗑', title:'Hapus Pesan', okText:'Hapus', cancelText:'Batal' });
-  if (!ok) return;
+  const ok = await showConfirm('Hapus pesan ini?', { icon:'🗑', title:'Hapus Pesan', okText:'Hapus', cancelText:'Batal' }); if (!ok) return;
   const { error } = await sb.from('chat_messages').delete().eq('id', id);
   if (error) { toast('Gagal hapus', false); return; }
-  const el = document.querySelector('[data-msg-id="' + id + '"]');
-  if (el) el.remove();
-  seenMsgIds.delete(String(id));
-  toast('Pesan dihapus');
+  const el = document.querySelector('[data-msg-id="' + id + '"]'); if (el) el.remove();
+  seenMsgIds.delete(String(id)); toast('Pesan dihapus');
 }
 
-// ===== SEND / EDIT DISPATCH =====
+// ===== SEND =====
 let sending = false;
 async function sendMsg() {
-  // Kalau sedang mode edit, simpan edit
   if (editingMsgId) { await saveEdit(); return; }
-
   if (sending) return;
   if (!currentAccount) { showErr('Session habis, login ulang'); return; }
 
@@ -693,16 +533,29 @@ async function sendMsg() {
   const msg = (inp.value || '').replace(/^[\s\uFEFF\xA0]+|[\s\uFEFF\xA0]+$/g, '');
   if (!msg) return;
 
-  sending = true;
-  inp.value = '';
-  inp.style.height = '';
-  inp.focus();
+  // Tampilkan pesan SEKETIKA di UI sebelum insert ke server
+  const tempId  = 'temp_' + Date.now();
+  const tempMsg = {
+    id:          tempId,
+    message:     msg,
+    sender_name: currentAccount.name,
+    sender_role: currentAccount.role || 'user',
+    created_at:  new Date().toISOString(),
+    reply_to_name: replyTarget ? replyTarget.sender_name : null,
+    reply_to_text: replyTarget ? replyTarget.message     : null,
+    is_edited:   false
+  };
+  statusMap[tempId] = 'pending';
+  const list = document.getElementById('chatList');
+  const ph   = list.querySelector('.state-msg'); if (ph) list.innerHTML = '';
+  const tempEl = buildMsg(tempMsg);
+  list.appendChild(tempEl);
+  scrollToBottom(list, true);
 
-  if (selfTyping) {
-    selfTyping = false;
-    clearTimeout(typingTimer);
-    rpc('update_typing', { p_username: currentAccount.name, p_is_typing: false });
-  }
+  sending = true;
+  inp.value = ''; inp.style.height = ''; inp.focus();
+
+  if (selfTyping) { selfTyping = false; clearTimeout(typingTimer); rpc('update_typing', { p_username: currentAccount.name, p_is_typing: false }); }
 
   const row = {
     message:     msg,
@@ -710,47 +563,43 @@ async function sendMsg() {
     sender_name: currentAccount.name,
     sender_role: currentAccount.role || 'user'
   };
-  if (replyTarget) {
-    row.reply_to_id   = replyTarget.id;
-    row.reply_to_name = replyTarget.sender_name;
-    row.reply_to_text = replyTarget.message;
-  }
+  if (replyTarget) { row.reply_to_id = replyTarget.id; row.reply_to_name = replyTarget.sender_name; row.reply_to_text = replyTarget.message; }
   clearReplyBanner();
 
   try {
     const { data, error } = await sb.from('chat_messages').insert([row]).select().single();
-    if (error) { showErr('Gagal kirim: ' + error.message); inp.value = msg; sending = false; return; }
+    if (error) {
+      // Hapus temp bubble kalau gagal
+      const t = document.querySelector('[data-msg-id="' + tempId + '"]'); if (t) t.remove();
+      seenMsgIds.delete(tempId); delete statusMap[tempId];
+      showErr('Gagal kirim: ' + error.message); inp.value = msg; sending = false; return;
+    }
     if (data) {
-      const id = String(data.id);
-      if (!seenMsgIds.has(id)) {
-        seenMsgIds.add(id);
-        lastPollTs = data.created_at;
-        const list = document.getElementById('chatList');
-        const ph   = list.querySelector('.state-msg');
-        if (ph) list.innerHTML = '';
-        list.appendChild(buildMsg(data));
-        scrollToBottom(list, true);
-      }
+      const realId = String(data.id);
+      // Ganti temp bubble dengan bubble asli
+      const t = document.querySelector('[data-msg-id="' + tempId + '"]');
+      seenMsgIds.delete(tempId); delete statusMap[tempId];
+      statusMap[realId] = 'sent';
+      seenMsgIds.add(realId);
+      lastPollTs = data.created_at;
+      const realEl = buildMsg(data);
+      if (t) t.replaceWith(realEl); else list.appendChild(realEl);
       upsertStatus(data.id, 'sent');
     }
   } catch (err) {
-    showErr('Error: ' + err.message);
-    inp.value = msg;
+    const t = document.querySelector('[data-msg-id="' + tempId + '"]'); if (t) t.remove();
+    showErr('Error: ' + err.message); inp.value = msg;
   }
 
   sending = false;
 }
 
-// ===== CHAT UPLOAD - modal konfirmasi =====
+// ===== CHAT UPLOAD =====
 let pendingChatFile = null;
-
 function doChatUpload(input) {
   if (!currentAccount) return;
-  const file = input.files[0];
-  if (!file) return;
-  pendingChatFile = file;
-  input.value = '';
-
+  const file = input.files[0]; if (!file) return;
+  pendingChatFile = file; input.value = '';
   document.getElementById('uploadFileName').textContent  = file.name;
   document.getElementById('uploadFileSize').textContent  = fmtBytes(file.size) + ' · ' + (file.type || 'unknown');
   document.getElementById('uploadProgressWrap').style.display = 'none';
@@ -758,11 +607,8 @@ function doChatUpload(input) {
   document.getElementById('uploadPctLabel').textContent   = '0%';
   document.getElementById('uploadSpeedLabel').textContent = '—';
   document.getElementById('uploadRemainLabel').textContent = '—';
-
-  const goBtn = document.getElementById('uploadGoBtn');
-  goBtn.disabled  = false;
-  goBtn.textContent = 'Kirim';
-  goBtn.onclick   = startChatFileUpload;
+  const g = document.getElementById('uploadGoBtn');
+  g.disabled = false; g.textContent = 'Kirim'; g.onclick = startChatFileUpload;
   document.getElementById('uploadCancelBtn').textContent = 'Batal';
   document.getElementById('uploadModalCloseBtn').style.display = '';
   document.getElementById('uploadConfirmModal').classList.add('show');
@@ -770,103 +616,65 @@ function doChatUpload(input) {
 
 async function startChatFileUpload() {
   if (!pendingChatFile || !currentAccount) return;
-  const file  = pendingChatFile;
-  const isVid = file.type.startsWith('video/');
-  const ext   = file.name.split('.').pop();
-  const name  = 'chat_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6) + '.' + ext;
-
-  const goBtn    = document.getElementById('uploadGoBtn');
-  const closeBtn = document.getElementById('uploadModalCloseBtn');
-  const cancelBtn = document.getElementById('uploadCancelBtn');
-  goBtn.disabled  = true;
-  goBtn.textContent    = 'Mengirim...';
-  closeBtn.style.display = 'none';
-  cancelBtn.textContent  = 'Batalkan';
+  const file = pendingChatFile, isVid = file.type.startsWith('video/'), ext = file.name.split('.').pop();
+  const name = 'chat_' + Date.now() + '_' + Math.random().toString(36).slice(2,6) + '.' + ext;
+  const g = document.getElementById('uploadGoBtn'), cl = document.getElementById('uploadModalCloseBtn'), cn = document.getElementById('uploadCancelBtn');
+  g.disabled = true; g.textContent = 'Mengirim...'; cl.style.display = 'none'; cn.textContent = 'Batalkan';
   document.getElementById('uploadProgressWrap').style.display = 'flex';
-
   let ll = 0, lt = Date.now(), ok = false;
   try {
     await new Promise((res, rej) => {
       const xhr = new XMLHttpRequest();
       xhr.open('POST', SB_URL + '/storage/v1/object/gallery/' + name, true);
-      xhr.setRequestHeader('Authorization', 'Bearer ' + SB_KEY);
-      xhr.setRequestHeader('x-upsert', 'false');
-      xhr.setRequestHeader('Cache-Control', '3600');
+      xhr.setRequestHeader('Authorization', 'Bearer ' + SB_KEY); xhr.setRequestHeader('x-upsert', 'false'); xhr.setRequestHeader('Cache-Control', '3600');
       xhr.upload.onprogress = (e) => {
         if (!e.lengthComputable) return;
-        const now = Date.now(), pct = Math.round(e.loaded / e.total * 100), el2 = (now - lt) / 1000;
-        const sp = el2 > 0 ? (e.loaded - ll) / el2 : 0;
+        const now = Date.now(), pct = Math.round(e.loaded/e.total*100), el2 = (now-lt)/1000, sp = el2 > 0 ? (e.loaded-ll)/el2 : 0;
         ll = e.loaded; lt = now;
-        document.getElementById('uploadProgressFill').style.width = pct + '%';
-        document.getElementById('uploadPctLabel').textContent = pct + '%';
-        document.getElementById('uploadSpeedLabel').textContent = sp > 0 ? fmtBytes(sp) + '/s' : '—';
-        document.getElementById('uploadRemainLabel').textContent = fmtBytes(e.total - e.loaded) + ' tersisa';
+        document.getElementById('uploadProgressFill').style.width = pct + '%'; document.getElementById('uploadPctLabel').textContent = pct + '%';
+        document.getElementById('uploadSpeedLabel').textContent = sp > 0 ? fmtBytes(sp)+'/s' : '—';
+        document.getElementById('uploadRemainLabel').textContent = fmtBytes(e.total-e.loaded) + ' tersisa';
       };
-      xhr.onload  = () => { xhr.status >= 200 && xhr.status < 300 ? res() : rej(new Error('HTTP ' + xhr.status)); };
-      xhr.onerror = () => rej(new Error('Network error'));
-      xhr.onabort = () => rej(new Error('Dibatalkan'));
-      xhr.send(file);
-    });
-    ok = true;
+      xhr.onload = () => { xhr.status >= 200 && xhr.status < 300 ? res() : rej(new Error('HTTP ' + xhr.status)); };
+      xhr.onerror = () => rej(new Error('Network error')); xhr.onabort = () => rej(new Error('Dibatalkan')); xhr.send(file);
+    }); ok = true;
   } catch (err) {
     toast(err.message === 'Dibatalkan' ? 'Dibatalkan' : 'Upload gagal', false);
-    goBtn.disabled = false; goBtn.textContent = 'Kirim';
-    cancelBtn.textContent = 'Batal'; closeBtn.style.display = '';
+    g.disabled = false; g.textContent = 'Kirim'; cn.textContent = 'Batal'; cl.style.display = '';
     document.getElementById('uploadProgressWrap').style.display = 'none';
     document.getElementById('uploadConfirmModal').classList.remove('show');
-    goBtn.onclick = startGalleryUpload;
-    pendingChatFile = null;
-    return;
+    g.onclick = startGalleryUpload; pendingChatFile = null; return;
   }
-
   if (!ok) return;
-  const url     = sb.storage.from('gallery').getPublicUrl(name).data.publicUrl;
-  const content = (isVid ? '[video]' : '[img]') + url;
-  const { error } = await sb.from('chat_messages').insert([{
-    message: content,
-    user_id: typeof USER_ID !== 'undefined' ? USER_ID : 'u',
-    sender_name: currentAccount.name,
-    sender_role: currentAccount.role
-  }]);
+  const url = sb.storage.from('gallery').getPublicUrl(name).data.publicUrl;
+  const { error } = await sb.from('chat_messages').insert([{ message: (isVid?'[video]':'[img]')+url, user_id: typeof USER_ID!=='undefined'?USER_ID:'u', sender_name: currentAccount.name, sender_role: currentAccount.role }]);
   if (error) toast('Gagal kirim', false); else toast('Media terkirim ✓');
   document.getElementById('uploadConfirmModal').classList.remove('show');
-  document.getElementById('uploadGoBtn').onclick = startGalleryUpload;
-  pendingChatFile = null;
+  document.getElementById('uploadGoBtn').onclick = startGalleryUpload; pendingChatFile = null;
 }
 
 // ===== MULTISELECT =====
 function enterSelect(id) { selectionActive = true; addSel(id); renderSelBar(); }
-function toggleSelect(id) {
-  if (!selectionActive) return;
-  if (selectedMsgIds.has(id)) remSel(id); else addSel(id);
-  if (!selectedMsgIds.size) { exitSelect(); return; }
-  renderSelBar();
-}
-function addSel(id) { selectedMsgIds.add(id); const r = document.querySelector('[data-msg-id="' + id + '"]'); if (r) r.classList.add('msg-selected'); }
-function remSel(id) { selectedMsgIds.delete(id); const r = document.querySelector('[data-msg-id="' + id + '"]'); if (r) r.classList.remove('msg-selected'); }
-function allOwn() { for (const id of selectedMsgIds) { const r = document.querySelector('[data-msg-id="' + id + '"]'); if (!r || !r.classList.contains('mine')) return false; } return true; }
+function toggleSelect(id) { if (!selectionActive) return; if (selectedMsgIds.has(id)) remSel(id); else addSel(id); if (!selectedMsgIds.size) { exitSelect(); return; } renderSelBar(); }
+function addSel(id) { selectedMsgIds.add(id); const r = document.querySelector('[data-msg-id="'+id+'"]'); if (r) r.classList.add('msg-selected'); }
+function remSel(id) { selectedMsgIds.delete(id); const r = document.querySelector('[data-msg-id="'+id+'"]'); if (r) r.classList.remove('msg-selected'); }
+function allOwn() { for (const id of selectedMsgIds) { const r = document.querySelector('[data-msg-id="'+id+'"]'); if (!r||!r.classList.contains('mine')) return false; } return true; }
 function renderSelBar() {
   let bar = document.getElementById('selectionBar');
   if (!bar) { bar = document.createElement('div'); bar.id = 'selectionBar'; bar.className = 'selection-bar'; document.querySelector('.topbar').appendChild(bar); }
-  const canDel = (currentAccount && currentAccount.role === 'admin') || allOwn();
-  bar.innerHTML = '<button class="sel-cancel-btn" onclick="exitSelect()">✕ Batal</button><span class="sel-label">' + selectedMsgIds.size + ' dipilih</span>' + (canDel ? '<button class="sel-delete-btn" onclick="delSelected()">🗑 Hapus</button>' : '<span style="width:74px"></span>');
+  const canDel = (currentAccount&&currentAccount.role==='admin')||allOwn();
+  bar.innerHTML = '<button class="sel-cancel-btn" onclick="exitSelect()">✕ Batal</button><span class="sel-label">'+selectedMsgIds.size+' dipilih</span>'+(canDel?'<button class="sel-delete-btn" onclick="delSelected()">🗑 Hapus</button>':'<span style="width:74px"></span>');
   bar.style.display = 'flex';
 }
-function exitSelect() {
-  selectionActive = false; selectedMsgIds.clear();
-  document.querySelectorAll('.msg-selected').forEach(e => e.classList.remove('msg-selected'));
-  const b = document.getElementById('selectionBar'); if (b) b.style.display = 'none';
-}
+function exitSelect() { selectionActive = false; selectedMsgIds.clear(); document.querySelectorAll('.msg-selected').forEach(e=>e.classList.remove('msg-selected')); const b=document.getElementById('selectionBar'); if(b) b.style.display='none'; }
 function exitSelectionMode() { exitSelect(); }
 async function delSelected() {
   if (!selectedMsgIds.size) return;
   const ids = Array.from(selectedMsgIds);
-  const ok  = await showConfirm('Hapus ' + (ids.length === 1 ? 'pesan ini' : ids.length + ' pesan') + '?', { icon:'🗑', title:'Hapus Pesan', okText:'Hapus', cancelText:'Batal' });
-  if (!ok) return;
-  exitSelect();
-  await sb.from('chat_messages').delete().in('id', ids);
-  ids.forEach(id => { const e = document.querySelector('[data-msg-id="' + id + '"]'); if (e) e.remove(); seenMsgIds.delete(String(id)); });
-  toast(ids.length === 1 ? 'Pesan dihapus' : ids.length + ' pesan dihapus');
+  const ok = await showConfirm('Hapus '+(ids.length===1?'pesan ini':ids.length+' pesan')+'?',{icon:'🗑',title:'Hapus Pesan',okText:'Hapus',cancelText:'Batal'}); if (!ok) return;
+  exitSelect(); await sb.from('chat_messages').delete().in('id', ids);
+  ids.forEach(id=>{const e=document.querySelector('[data-msg-id="'+id+'"]');if(e)e.remove();seenMsgIds.delete(String(id));});
+  toast(ids.length===1?'Pesan dihapus':ids.length+' pesan dihapus');
 }
 async function delSelectedMsgs() { await delSelected(); }
 
@@ -883,231 +691,62 @@ const EMOJI_CATEGORIES = [
 ];
 function buildEmojiPicker() {
   if (document.getElementById('emojiPickerPanel')) return document.getElementById('emojiPickerPanel');
-  const panel = document.createElement('div'); panel.id = 'emojiPickerPanel'; panel.className = 'emoji-picker-wrap';
-  const hint = document.createElement('div'); hint.className = 'emoji-swipe-hint'; panel.appendChild(hint);
-  const tabs = document.createElement('div'); tabs.className = 'emoji-cat-tabs';
-  const body = document.createElement('div'); body.className = 'emoji-body';
+  const panel = document.createElement('div'); panel.id='emojiPickerPanel'; panel.className='emoji-picker-wrap';
+  const hint = document.createElement('div'); hint.className='emoji-swipe-hint'; panel.appendChild(hint);
+  const tabs = document.createElement('div'); tabs.className='emoji-cat-tabs';
+  const body = document.createElement('div'); body.className='emoji-body';
   EMOJI_CATEGORIES.forEach((cat, idx) => {
-    const tab = document.createElement('button'); tab.className = 'emoji-cat-tab' + (idx === 0 ? ' active' : ''); tab.title = cat.label; tab.textContent = cat.icon;
-    tab.onclick = () => { document.querySelectorAll('.emoji-cat-tab').forEach(t => t.classList.remove('active')); tab.classList.add('active'); document.querySelectorAll('.emoji-section').forEach(s => s.style.display = 'none'); document.getElementById('emoji-sec-' + idx).style.display = ''; };
+    const tab = document.createElement('button'); tab.className='emoji-cat-tab'+(idx===0?' active':''); tab.title=cat.label; tab.textContent=cat.icon;
+    tab.onclick=()=>{document.querySelectorAll('.emoji-cat-tab').forEach(t=>t.classList.remove('active'));tab.classList.add('active');document.querySelectorAll('.emoji-section').forEach(s=>s.style.display='none');document.getElementById('emoji-sec-'+idx).style.display='';};
     tabs.appendChild(tab);
-    const sec = document.createElement('div'); sec.className = 'emoji-section'; sec.id = 'emoji-sec-' + idx; if (idx !== 0) sec.style.display = 'none';
-    cat.emojis.forEach(em => { const b = document.createElement('button'); b.className = 'emoji-item'; b.textContent = em; b.onclick = (e) => { e.stopPropagation(); insertEmoji(em); }; sec.appendChild(b); });
+    const sec=document.createElement('div'); sec.className='emoji-section'; sec.id='emoji-sec-'+idx; if(idx!==0)sec.style.display='none';
+    cat.emojis.forEach(em=>{const b=document.createElement('button');b.className='emoji-item';b.textContent=em;b.onclick=(e)=>{e.stopPropagation();insertEmoji(em);};sec.appendChild(b);});
     body.appendChild(sec);
   });
   panel.appendChild(tabs); panel.appendChild(body);
-  const cb = document.querySelector('.chat-bar'); if (cb) cb.appendChild(panel);
+  const cb=document.querySelector('.chat-bar'); if(cb) cb.appendChild(panel);
   return panel;
 }
-function insertEmoji(em) {
-  const i = document.getElementById('chatInput'); if (!i) return;
-  const s = i.selectionStart, e = i.selectionEnd;
-  i.value = i.value.slice(0, s) + em + i.value.slice(e);
-  i.setSelectionRange(s + em.length, s + em.length); i.focus();
-}
-function toggleEmojiPicker(e) {
-  e.stopPropagation();
-  const p = document.getElementById('emojiPickerPanel') || buildEmojiPicker();
-  emojiPickerOpen = !emojiPickerOpen;
-  p.style.display = emojiPickerOpen ? 'flex' : 'none';
-  document.getElementById('emojiTrigger').classList.toggle('active', emojiPickerOpen);
-}
-function closeEmojiPicker() {
-  emojiPickerOpen = false;
-  const p = document.getElementById('emojiPickerPanel'); if (p) p.style.display = 'none';
-  const t = document.getElementById('emojiTrigger'); if (t) t.classList.remove('active');
-}
+function insertEmoji(em) { const i=document.getElementById('chatInput');if(!i)return;const s=i.selectionStart,e=i.selectionEnd;i.value=i.value.slice(0,s)+em+i.value.slice(e);i.setSelectionRange(s+em.length,s+em.length);i.focus(); }
+function toggleEmojiPicker(e) { e.stopPropagation();const p=document.getElementById('emojiPickerPanel')||buildEmojiPicker();emojiPickerOpen=!emojiPickerOpen;p.style.display=emojiPickerOpen?'flex':'none';document.getElementById('emojiTrigger').classList.toggle('active',emojiPickerOpen); }
+function closeEmojiPicker() { emojiPickerOpen=false;const p=document.getElementById('emojiPickerPanel');if(p)p.style.display='none';const t=document.getElementById('emojiTrigger');if(t)t.classList.remove('active'); }
 
 // ===== GALLERY =====
-let galleryItems = [], galleryLoaded = false, lbIdx = -1;
+let galleryItems=[],galleryLoaded=false,lbIdx=-1;
 async function loadGallery() {
-  const el = document.getElementById('galleryGrid');
-  el.innerHTML = '<p class="state-msg">Memuat...</p>';
-  const { data, error } = await sb.from('gallery').select('*').order('created_at', { ascending: false });
-  if (error) { el.innerHTML = '<p class="state-msg err">Error: ' + error.message + '</p>'; return; }
-  galleryLoaded = true; galleryItems = [];
-  if (!data || !data.length) { el.innerHTML = '<p class="state-msg">Belum ada media.</p>'; return; }
-  el.innerHTML = '';
-  const isAdmin = currentAccount && currentAccount.role === 'admin';
-  const frag    = document.createDocumentFragment();
-  data.forEach((f, idx) => {
-    const isVid = /\.(mp4|webm|mov|avi)$/i.test(f.file_name || '');
-    galleryItems.push({ url: f.file_url, isVid });
-    const d = document.createElement('div'); d.className = 'g-item';
-    if (isVid) {
-      const th = document.createElement('div'); th.style.cssText = 'position:relative;width:100%;height:100%;cursor:pointer;';
-      const v = document.createElement('video'); v.className = 'g-media'; v.preload = 'metadata'; v.muted = true; v.playsInline = true; v.src = f.file_url + '#t=0.001';
-      const pi = document.createElement('div'); pi.className = 'g-play-icon';
-      pi.innerHTML = '<svg viewBox="0 0 24 24" width="28" height="28"><circle cx="12" cy="12" r="12" fill="rgba(0,0,0,0.5)"/><polygon points="10,8 18,12 10,16" fill="white"/></svg>';
-      th.appendChild(v); th.appendChild(pi); ((i) => { th.onclick = () => openLightbox(i); })(idx); d.appendChild(th);
-    } else {
-      const img = document.createElement('img'); img.src = f.file_url; img.className = 'g-media'; img.loading = 'lazy';
-      ((i) => { img.onclick = () => openLightbox(i); })(idx); d.appendChild(img);
-    }
-    if (isAdmin) { const db = document.createElement('button'); db.className = 'g-del'; db.textContent = '✕'; db.onclick = (e) => { e.stopPropagation(); delMedia(f.id, f.file_name); }; d.appendChild(db); }
+  const el=document.getElementById('galleryGrid'); el.innerHTML='<p class="state-msg">Memuat...</p>';
+  const{data,error}=await sb.from('gallery').select('*').order('created_at',{ascending:false});
+  if(error){el.innerHTML='<p class="state-msg err">Error: '+error.message+'</p>';return;}
+  galleryLoaded=true;galleryItems=[];
+  if(!data||!data.length){el.innerHTML='<p class="state-msg">Belum ada media.</p>';return;}
+  el.innerHTML=''; const isAdmin=currentAccount&&currentAccount.role==='admin'; const frag=document.createDocumentFragment();
+  data.forEach((f,idx)=>{
+    const isVid=/\.(mp4|webm|mov|avi)$/i.test(f.file_name||''); galleryItems.push({url:f.file_url,isVid});
+    const d=document.createElement('div'); d.className='g-item';
+    if(isVid){const th=document.createElement('div');th.style.cssText='position:relative;width:100%;height:100%;cursor:pointer;';const v=document.createElement('video');v.className='g-media';v.preload='metadata';v.muted=true;v.playsInline=true;v.src=f.file_url+'#t=0.001';const pi=document.createElement('div');pi.className='g-play-icon';pi.innerHTML='<svg viewBox="0 0 24 24" width="28" height="28"><circle cx="12" cy="12" r="12" fill="rgba(0,0,0,0.5)"/><polygon points="10,8 18,12 10,16" fill="white"/></svg>';th.appendChild(v);th.appendChild(pi);((i)=>{th.onclick=()=>openLightbox(i);})(idx);d.appendChild(th);}
+    else{const img=document.createElement('img');img.src=f.file_url;img.className='g-media';img.loading='lazy';((i)=>{img.onclick=()=>openLightbox(i);})(idx);d.appendChild(img);}
+    if(isAdmin){const db=document.createElement('button');db.className='g-del';db.textContent='✕';db.onclick=(e)=>{e.stopPropagation();delMedia(f.id,f.file_name);};d.appendChild(db);}
     frag.appendChild(d);
-  });
-  el.appendChild(frag);
+  }); el.appendChild(frag);
 }
-async function delMedia(id, name) {
-  if (!currentAccount || currentAccount.role !== 'admin') return;
-  const ok = await showConfirm('Hapus media ini?', { icon:'🗑', title:'Hapus Media', okText:'Hapus', cancelText:'Batal' });
-  if (!ok) return;
-  await sb.storage.from('gallery').remove([name]);
-  const { error } = await sb.from('gallery').delete().eq('id', id);
-  if (error) { toast('Gagal hapus', false); return; }
-  toast('Dihapus'); galleryLoaded = false; loadGallery();
-}
+async function delMedia(id,name){if(!currentAccount||currentAccount.role!=='admin')return;const ok=await showConfirm('Hapus media ini?',{icon:'🗑',title:'Hapus Media',okText:'Hapus',cancelText:'Batal'});if(!ok)return;await sb.storage.from('gallery').remove([name]);const{error}=await sb.from('gallery').delete().eq('id',id);if(error){toast('Gagal hapus',false);return;}toast('Dihapus');galleryLoaded=false;loadGallery();}
 
 // ===== GALLERY UPLOAD =====
-let pendingFile = null, uploadXHR = null;
-function triggerUploadConfirm(input) {
-  if (!currentAccount || currentAccount.role !== 'admin') { toast('Hanya admin yang bisa upload', false); input.value = ''; return; }
-  const file = input.files[0]; if (!file) return;
-  pendingFile = file;
-  document.getElementById('uploadFileName').textContent  = file.name;
-  document.getElementById('uploadFileSize').textContent  = fmtBytes(file.size) + ' · ' + (file.type || 'unknown');
-  document.getElementById('uploadProgressWrap').style.display = 'none';
-  document.getElementById('uploadProgressFill').style.width   = '0%';
-  document.getElementById('uploadPctLabel').textContent   = '0%';
-  document.getElementById('uploadSpeedLabel').textContent = '—';
-  document.getElementById('uploadRemainLabel').textContent = '—';
-  const goBtn = document.getElementById('uploadGoBtn');
-  goBtn.disabled  = false;
-  goBtn.textContent = 'Upload';
-  goBtn.onclick   = startGalleryUpload;
-  document.getElementById('uploadCancelBtn').textContent = 'Batal';
-  document.getElementById('uploadModalCloseBtn').style.display = '';
-  document.getElementById('uploadConfirmModal').classList.add('show');
-  input.value = '';
-}
-function cancelUploadModal() {
-  if (uploadXHR) { try { uploadXHR.abort(); } catch (e) {} uploadXHR = null; }
-  pendingFile = null; pendingChatFile = null;
-  document.getElementById('uploadGoBtn').onclick = startGalleryUpload;
-  document.getElementById('uploadConfirmModal').classList.remove('show');
-}
-async function startGalleryUpload() {
-  if (!pendingFile) return;
-  const file = pendingFile;
-  const goBtn = document.getElementById('uploadGoBtn');
-  goBtn.disabled = true; goBtn.textContent = 'Mengupload...';
-  document.getElementById('uploadModalCloseBtn').style.display = 'none';
-  document.getElementById('uploadCancelBtn').textContent = 'Batalkan';
-  document.getElementById('uploadProgressWrap').style.display = 'flex';
-  const ext = file.name.split('.').pop();
-  const name = Date.now() + '_' + Math.random().toString(36).slice(2, 6) + '.' + ext;
-  let ll = 0, lt = Date.now(), ok = false;
-  try {
-    await new Promise((res, rej) => {
-      const xhr = new XMLHttpRequest(); uploadXHR = xhr;
-      xhr.open('POST', SB_URL + '/storage/v1/object/gallery/' + name, true);
-      xhr.setRequestHeader('Authorization', 'Bearer ' + SB_KEY);
-      xhr.setRequestHeader('x-upsert', 'false'); xhr.setRequestHeader('Cache-Control', '3600');
-      xhr.upload.onprogress = (e) => {
-        if (!e.lengthComputable) return;
-        const now = Date.now(), pct = Math.round(e.loaded / e.total * 100), el2 = (now - lt) / 1000, sp = el2 > 0 ? (e.loaded - ll) / el2 : 0;
-        ll = e.loaded; lt = now;
-        document.getElementById('uploadProgressFill').style.width = pct + '%';
-        document.getElementById('uploadPctLabel').textContent = pct + '%';
-        document.getElementById('uploadSpeedLabel').textContent = sp > 0 ? fmtBytes(sp) + '/s' : '—';
-        document.getElementById('uploadRemainLabel').textContent = fmtBytes(e.total - e.loaded) + ' tersisa';
-      };
-      xhr.onload  = () => { uploadXHR = null; xhr.status >= 200 && xhr.status < 300 ? res() : rej(new Error('HTTP ' + xhr.status)); };
-      xhr.onerror = () => { uploadXHR = null; rej(new Error('Network error')); };
-      xhr.onabort = () => { uploadXHR = null; rej(new Error('Dibatalkan')); };
-      xhr.send(file);
-    }); ok = true;
-  } catch (err) {
-    toast(err.message === 'Dibatalkan' ? 'Upload dibatalkan' : 'Upload gagal: ' + err.message, false);
-    goBtn.disabled = false; goBtn.textContent = 'Upload';
-    document.getElementById('uploadCancelBtn').textContent = 'Batal';
-    document.getElementById('uploadModalCloseBtn').style.display = '';
-    document.getElementById('uploadProgressWrap').style.display = 'none';
-    document.getElementById('uploadConfirmModal').classList.remove('show');
-    pendingFile = null; return;
-  }
-  if (!ok) return;
-  const url = sb.storage.from('gallery').getPublicUrl(name).data.publicUrl;
-  const { error } = await sb.from('gallery').insert([{ file_url: url, file_name: name, uploaded_by: currentAccount ? currentAccount.name : null }]);
-  if (error) toast('Gagal simpan: ' + error.message, false);
-  else { toast('Berhasil diupload ✓'); galleryLoaded = false; loadGallery(); }
-  pendingFile = null; uploadXHR = null;
-  document.getElementById('uploadConfirmModal').classList.remove('show');
-}
+let pendingFile=null,uploadXHR=null;
+function triggerUploadConfirm(input){if(!currentAccount||currentAccount.role!=='admin'){toast('Hanya admin yang bisa upload',false);input.value='';return;}const file=input.files[0];if(!file)return;pendingFile=file;document.getElementById('uploadFileName').textContent=file.name;document.getElementById('uploadFileSize').textContent=fmtBytes(file.size)+' · '+(file.type||'unknown');document.getElementById('uploadProgressWrap').style.display='none';document.getElementById('uploadProgressFill').style.width='0%';document.getElementById('uploadPctLabel').textContent='0%';document.getElementById('uploadSpeedLabel').textContent='—';document.getElementById('uploadRemainLabel').textContent='—';const g=document.getElementById('uploadGoBtn');g.disabled=false;g.textContent='Upload';g.onclick=startGalleryUpload;document.getElementById('uploadCancelBtn').textContent='Batal';document.getElementById('uploadModalCloseBtn').style.display='';document.getElementById('uploadConfirmModal').classList.add('show');input.value='';}
+function cancelUploadModal(){if(uploadXHR){try{uploadXHR.abort();}catch(e){}uploadXHR=null;}pendingFile=null;pendingChatFile=null;document.getElementById('uploadGoBtn').onclick=startGalleryUpload;document.getElementById('uploadConfirmModal').classList.remove('show');}
+async function startGalleryUpload(){if(!pendingFile)return;const file=pendingFile;const g=document.getElementById('uploadGoBtn');g.disabled=true;g.textContent='Mengupload...';document.getElementById('uploadModalCloseBtn').style.display='none';document.getElementById('uploadCancelBtn').textContent='Batalkan';document.getElementById('uploadProgressWrap').style.display='flex';const ext=file.name.split('.').pop();const name=Date.now()+'_'+Math.random().toString(36).slice(2,6)+'.'+ext;let ll=0,lt=Date.now(),ok=false;try{await new Promise((res,rej)=>{const xhr=new XMLHttpRequest();uploadXHR=xhr;xhr.open('POST',SB_URL+'/storage/v1/object/gallery/'+name,true);xhr.setRequestHeader('Authorization','Bearer '+SB_KEY);xhr.setRequestHeader('x-upsert','false');xhr.setRequestHeader('Cache-Control','3600');xhr.upload.onprogress=(e)=>{if(!e.lengthComputable)return;const now=Date.now(),pct=Math.round(e.loaded/e.total*100),el2=(now-lt)/1000,sp=el2>0?(e.loaded-ll)/el2:0;ll=e.loaded;lt=now;document.getElementById('uploadProgressFill').style.width=pct+'%';document.getElementById('uploadPctLabel').textContent=pct+'%';document.getElementById('uploadSpeedLabel').textContent=sp>0?fmtBytes(sp)+'/s':'—';document.getElementById('uploadRemainLabel').textContent=fmtBytes(e.total-e.loaded)+' tersisa';};xhr.onload=()=>{uploadXHR=null;xhr.status>=200&&xhr.status<300?res():rej(new Error('HTTP '+xhr.status));};xhr.onerror=()=>{uploadXHR=null;rej(new Error('Network error'));};xhr.onabort=()=>{uploadXHR=null;rej(new Error('Dibatalkan'));};xhr.send(file);});ok=true;}catch(err){toast(err.message==='Dibatalkan'?'Upload dibatalkan':'Upload gagal: '+err.message,false);g.disabled=false;g.textContent='Upload';document.getElementById('uploadCancelBtn').textContent='Batal';document.getElementById('uploadModalCloseBtn').style.display='';document.getElementById('uploadProgressWrap').style.display='none';document.getElementById('uploadConfirmModal').classList.remove('show');pendingFile=null;return;}if(!ok)return;const url=sb.storage.from('gallery').getPublicUrl(name).data.publicUrl;const{error}=await sb.from('gallery').insert([{file_url:url,file_name:name,uploaded_by:currentAccount?currentAccount.name:null}]);if(error)toast('Gagal simpan: '+error.message,false);else{toast('Berhasil diupload ✓');galleryLoaded=false;loadGallery();}pendingFile=null;uploadXHR=null;document.getElementById('uploadConfirmModal').classList.remove('show');}
 
 // ===== LIGHTBOX =====
-function openLightbox(idx) { lbIdx = idx; lbRender(idx); lbNavUpdate(); document.getElementById('lightbox').classList.add('show'); document.body.style.overflow = 'hidden'; }
-function openLightboxFromChat(url) {
-  lbIdx = -1; const w = document.getElementById('lightboxMediaWrap'); lbClear(w);
-  const img = document.getElementById('lightboxImg'); img.src = url; img.style.display = '';
-  document.getElementById('lightboxCounter').innerHTML = '';
-  document.getElementById('lightboxPrev').style.display = 'none';
-  document.getElementById('lightboxNext').style.display = 'none';
-  document.getElementById('lightbox').classList.add('show'); document.body.style.overflow = 'hidden';
-}
-function lbClear(w) {
-  if (!w) w = document.getElementById('lightboxMediaWrap');
-  const v = w.querySelector('video'); if (v) { try { v.pause(); v.src = ''; } catch (e) {} v.remove(); }
-  const img = document.getElementById('lightboxImg'); if (img) { img.src = ''; img.style.display = 'none'; }
-}
-function lbRender(idx) {
-  const w = document.getElementById('lightboxMediaWrap'); lbClear(w);
-  if (idx < 0 || !galleryItems[idx]) return;
-  const item = galleryItems[idx], img = document.getElementById('lightboxImg');
-  if (item.isVid) {
-    img.style.display = 'none';
-    const v = document.createElement('video'); v.src = item.url; v.controls = true; v.playsInline = true;
-    v.style.cssText = 'max-width:100%;max-height:76vh;width:auto;height:auto;object-fit:contain;display:block;';
-    w.appendChild(v);
-  } else { img.src = item.url; img.style.display = ''; }
-  lbCounter(idx);
-}
-function lbNavUpdate() {
-  const p = document.getElementById('lightboxPrev'), n = document.getElementById('lightboxNext');
-  if (lbIdx < 0 || galleryItems.length <= 1) { if (p) p.style.display = 'none'; if (n) n.style.display = 'none'; return; }
-  if (p) p.style.display = lbIdx > 0 ? '' : 'none';
-  if (n) n.style.display = lbIdx < galleryItems.length - 1 ? '' : 'none';
-}
-function lbCounter(idx) {
-  const c = document.getElementById('lightboxCounter'); if (!c) return;
-  if (galleryItems.length <= 1) { c.innerHTML = ''; return; }
-  const s = Math.max(0, idx - 5), e = Math.min(galleryItems.length - 1, s + 11);
-  c.innerHTML = Array.from({ length: e - s + 1 }, (_, i) => '<span class="lb-dot' + (s + i === idx ? ' active' : '') + '"></span>').join('');
-}
-function lightboxNav(dir) {
-  if (lbIdx < 0) return;
-  const n = lbIdx + dir; if (n < 0 || n >= galleryItems.length) return;
-  lbIdx = n; const w = document.getElementById('lightboxMediaWrap');
-  w.style.transition = 'opacity .15s,transform .15s'; w.style.opacity = '0'; w.style.transform = 'translateX(' + (dir > 0 ? '24px' : '-24px') + ')';
-  setTimeout(() => { lbRender(lbIdx); lbNavUpdate(); w.style.transition = 'opacity .2s,transform .2s'; w.style.opacity = '1'; w.style.transform = 'translateX(0)'; }, 120);
-}
-function closeLightbox() {
-  document.getElementById('lightbox').classList.remove('show');
-  const w = document.getElementById('lightboxMediaWrap'); lbClear(w);
-  const img = document.getElementById('lightboxImg'); if (img) { img.src = ''; img.style.display = ''; }
-  document.getElementById('lightboxCounter').innerHTML = '';
-  lbIdx = -1; document.body.style.overflow = '';
-  if (w) { w.style.opacity = ''; w.style.transform = ''; w.style.transition = ''; }
-}
-(function () {
-  document.addEventListener('DOMContentLoaded', () => {
-    const lb = document.getElementById('lightbox'); if (!lb) return;
-    let sx = 0, sw = false;
-    lb.addEventListener('touchstart', (e) => { if (e.target.closest('.lightbox-close,.lightbox-prev,.lightbox-next')) return; sx = e.touches[0].clientX; sw = false; }, { passive: true });
-    lb.addEventListener('touchmove',  (e) => { if (Math.abs(e.touches[0].clientX - sx) > 12) sw = true; }, { passive: true });
-    lb.addEventListener('touchend',   (e) => { if (!sw) return; const dx = e.changedTouches[0].clientX - sx; sw = false; if (Math.abs(dx) > 60) lightboxNav(dx < 0 ? 1 : -1); });
-  });
-})();
+function openLightbox(idx){lbIdx=idx;lbRender(idx);lbNavUpdate();document.getElementById('lightbox').classList.add('show');document.body.style.overflow='hidden';}
+function openLightboxFromChat(url){lbIdx=-1;const w=document.getElementById('lightboxMediaWrap');lbClear(w);const img=document.getElementById('lightboxImg');img.src=url;img.style.display='';document.getElementById('lightboxCounter').innerHTML='';document.getElementById('lightboxPrev').style.display='none';document.getElementById('lightboxNext').style.display='none';document.getElementById('lightbox').classList.add('show');document.body.style.overflow='hidden';}
+function lbClear(w){if(!w)w=document.getElementById('lightboxMediaWrap');const v=w.querySelector('video');if(v){try{v.pause();v.src='';}catch(e){}v.remove();}const img=document.getElementById('lightboxImg');if(img){img.src='';img.style.display='none';}}
+function lbRender(idx){const w=document.getElementById('lightboxMediaWrap');lbClear(w);if(idx<0||!galleryItems[idx])return;const item=galleryItems[idx],img=document.getElementById('lightboxImg');if(item.isVid){img.style.display='none';const v=document.createElement('video');v.src=item.url;v.controls=true;v.playsInline=true;v.style.cssText='max-width:100%;max-height:76vh;width:auto;height:auto;object-fit:contain;display:block;';w.appendChild(v);}else{img.src=item.url;img.style.display='';}lbCounter(idx);}
+function lbNavUpdate(){const p=document.getElementById('lightboxPrev'),n=document.getElementById('lightboxNext');if(lbIdx<0||galleryItems.length<=1){if(p)p.style.display='none';if(n)n.style.display='none';return;}if(p)p.style.display=lbIdx>0?'':'none';if(n)n.style.display=lbIdx<galleryItems.length-1?'':'none';}
+function lbCounter(idx){const c=document.getElementById('lightboxCounter');if(!c)return;if(galleryItems.length<=1){c.innerHTML='';return;}const s=Math.max(0,idx-5),e=Math.min(galleryItems.length-1,s+11);c.innerHTML=Array.from({length:e-s+1},(_,i)=>'<span class="lb-dot'+(s+i===idx?' active':'')+'"></span>').join('');}
+function lightboxNav(dir){if(lbIdx<0)return;const n=lbIdx+dir;if(n<0||n>=galleryItems.length)return;lbIdx=n;const w=document.getElementById('lightboxMediaWrap');w.style.transition='opacity .15s,transform .15s';w.style.opacity='0';w.style.transform='translateX('+(dir>0?'24px':'-24px')+')';setTimeout(()=>{lbRender(lbIdx);lbNavUpdate();w.style.transition='opacity .2s,transform .2s';w.style.opacity='1';w.style.transform='translateX(0)';},120);}
+function closeLightbox(){document.getElementById('lightbox').classList.remove('show');const w=document.getElementById('lightboxMediaWrap');lbClear(w);const img=document.getElementById('lightboxImg');if(img){img.src='';img.style.display='';}document.getElementById('lightboxCounter').innerHTML='';lbIdx=-1;document.body.style.overflow='';if(w){w.style.opacity='';w.style.transform='';w.style.transition='';}}
+(function(){document.addEventListener('DOMContentLoaded',()=>{const lb=document.getElementById('lightbox');if(!lb)return;let sx=0,sw=false;lb.addEventListener('touchstart',(e)=>{if(e.target.closest('.lightbox-close,.lightbox-prev,.lightbox-next'))return;sx=e.touches[0].clientX;sw=false;},{passive:true});lb.addEventListener('touchmove',(e)=>{if(Math.abs(e.touches[0].clientX-sx)>12)sw=true;},{passive:true});lb.addEventListener('touchend',(e)=>{if(!sw)return;const dx=e.changedTouches[0].clientX-sx;sw=false;if(Math.abs(dx)>60)lightboxNav(dx<0?1:-1);});});})();
 
 // ===== CLEANUP =====
-window.addEventListener('beforeunload', () => {
-  if (presenceTimer) clearInterval(presenceTimer);
-  if (pollTimer)     clearInterval(pollTimer);
-  if (chatChannel)     { try { sb.removeChannel(chatChannel);     } catch (e) {} }
-  if (presenceChannel) { try { sb.removeChannel(presenceChannel); } catch (e) {} }
-  if (currentAccount) {
-    rpc('update_presence', { p_username: currentAccount.name, p_is_online: false });
-    rpc('update_typing',   { p_username: currentAccount.name, p_is_typing: false  });
-  }
-});
+window.addEventListener('beforeunload',()=>{if(presenceTimer)clearInterval(presenceTimer);if(pollTimer)clearInterval(pollTimer);if(chatChannel){try{sb.removeChannel(chatChannel);}catch(e){}}if(presenceChannel){try{sb.removeChannel(presenceChannel);}catch(e){}}if(currentAccount){rpc('update_presence',{p_username:currentAccount.name,p_is_online:false});rpc('update_typing',{p_username:currentAccount.name,p_is_typing:false});}});
