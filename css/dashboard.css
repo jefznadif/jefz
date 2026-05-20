@@ -856,7 +856,24 @@ body.dark .reply-preview { background:rgba(255,255,255,0.08); }
   to   { opacity: 1; transform: scale(1)   translateY(0);    }
 }
 
-/* Typing dots (jika belum ada) */
+/* ================================================================
+   TAMBAHKAN KE PALING BAWAH dashboard.css
+   Voice Note + Monitor + Status icons + Typing
+   ================================================================ */
+
+/* ===== STATUS ICONS ===== */
+.msg-status-icons svg { width:14px; height:14px; }
+.status-pending  { stroke: var(--text3); }
+.status-sent     { stroke: var(--text3); }
+.status-delivered{ stroke: var(--text3); }
+.status-read     { stroke: #34c759; }
+
+/* ===== TYPING TOPBAR ===== */
+.topbar-online.typing { color: var(--accent); font-style: italic; }
+.topbar-online.typing .topbar-online-dot { background: var(--accent); animation: typingPulse 1s ease infinite; }
+@keyframes typingPulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.7)} }
+
+/* ===== TYPING DOTS ===== */
 .typing-dots { display:flex; align-items:center; gap:3px; }
 .typing-dots span { width:6px; height:6px; border-radius:50%; background:var(--text3); animation:typingDot 1.2s ease infinite; }
 .typing-dots span:nth-child(1){animation-delay:0s}
@@ -864,14 +881,82 @@ body.dark .reply-preview { background:rgba(255,255,255,0.08); }
 .typing-dots span:nth-child(3){animation-delay:0.4s}
 @keyframes typingDot { 0%,60%,100%{transform:translateY(0);opacity:0.4} 30%{transform:translateY(-5px);opacity:1} }
 
-/* Status icons */
-.msg-status-icons svg { width:14px; height:14px; }
-.status-pending  { stroke: var(--text3); }
-.status-sent     { stroke: var(--text3); }
-.status-delivered{ stroke: var(--text3); }
-.status-read     { stroke: #34c759;      }
+/* ===== VOICE NOTE OVERLAY ===== */
+.vn-overlay {
+  position:fixed; bottom:0; left:0; right:0; z-index:400;
+  height:68px; display:flex; align-items:center; justify-content:space-between;
+  padding:0 16px; gap:10px;
+  background:var(--topbar-bg); backdrop-filter:var(--blur); -webkit-backdrop-filter:var(--blur);
+  border-top:1px solid var(--separator);
+  animation:slideUpVn 0.2s ease;
+}
+@keyframes slideUpVn { from{transform:translateY(100%);opacity:0} to{transform:translateY(0);opacity:1} }
 
-/* Typing topbar */
-.topbar-online.typing { color: var(--accent); font-style: italic; }
-.topbar-online.typing .topbar-online-dot { background: var(--accent); animation: typingPulse 1s ease infinite; }
-@keyframes typingPulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.7)} }
+.vn-cancel-hint { display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text3);opacity:0.4;transition:all 0.15s;white-space:nowrap; }
+.vn-lock-hint   { display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10px;color:var(--text3);opacity:0.4;transition:all 0.15s; }
+.vn-center      { display:flex;align-items:center;gap:8px;flex:1;justify-content:center; }
+
+.vn-rec-dot { width:8px;height:8px;border-radius:50%;background:#ff3b30;animation:recPulse 1s ease infinite;flex-shrink:0; }
+@keyframes recPulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.7)} }
+
+.vn-timer { font-size:17px;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums;min-width:38px;text-align:center; }
+
+.vn-wave-wrap { display:flex;align-items:center;gap:2px;height:22px; }
+.vn-wave-bar  { width:3px;border-radius:2px;background:var(--accent);animation:vnWave 0.5s ease infinite alternate; }
+@keyframes vnWave { from{height:20%} to{height:90%} }
+
+.vn-del-btn {
+  width:40px;height:40px;border-radius:50%;border:none;
+  background:rgba(255,59,48,0.12);color:var(--danger);
+  cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+.vn-del-btn:active { background:rgba(255,59,48,0.25); }
+
+.vn-send-locked-btn {
+  width:44px;height:44px;border-radius:50%;border:none;background:#34c759;
+  color:white;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  box-shadow:0 2px 10px rgba(52,199,89,0.4);flex-shrink:0;transition:transform 0.15s;
+}
+.vn-send-locked-btn svg { width:18px;height:18px; }
+.vn-send-locked-btn:active { transform:scale(0.93); }
+
+/* ===== VOICE NOTE BUBBLE ===== */
+.vn-wrap {
+  display:flex;align-items:center;gap:8px;
+  padding:2px 0;min-width:180px;max-width:240px;
+}
+.vn-play-btn {
+  width:36px;height:36px;border-radius:50%;border:none;
+  background:var(--accent);color:white;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;transition:all 0.15s;
+}
+.vn-play-btn.playing { background:#34c759; }
+.vn-play-btn:active  { transform:scale(0.9); }
+
+.vn-waveform {
+  display:flex;align-items:center;gap:2px;
+  height:28px;flex:1;cursor:pointer;
+}
+.vn-bar {
+  width:3px;border-radius:2px;background:var(--text3);
+  transition:height 0.1s, background 0.15s;min-height:4px;
+}
+.vn-duration {
+  font-size:11px;color:var(--text3);font-weight:600;
+  min-width:28px;text-align:right;flex-shrink:0;
+}
+
+/* ===== MONITOR CONTROLS ===== */
+.monitor-btn { font-size:18px;padding:4px 2px;transition:all 0.18s;line-height:1; }
+.monitor-btn:active { transform:scale(0.88); }
+
+/* ===== MONITOR FLOATING ===== */
+#monitorFloating { animation:monitorIn 0.3s cubic-bezier(0.34,1.56,0.64,1); }
+@keyframes monitorIn { from{opacity:0;transform:scale(0.8) translateY(20px)} to{opacity:1;transform:scale(1) translateY(0)} }
+
+/* ===== LIGHTBOX ANIMATIONS (jika belum ada) ===== */
+@keyframes lbFadeIn  { from{opacity:0} to{opacity:1} }
+@keyframes lbCardIn  { from{opacity:0;transform:scale(0.92) translateY(10px)} to{opacity:1;transform:scale(1) translateY(0)} }
+@keyframes overlayOut{ from{opacity:1} to{opacity:0} }
+@keyframes livePulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(0.8)} }
