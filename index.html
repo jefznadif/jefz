@@ -20,15 +20,19 @@
       color:white;
       font-size:40px;
       font-weight:bold;
-      animation: ngakak 1s infinite alternate;
     }
 
-    @keyframes ngakak{
+    .emoji{
+      display:inline-block;
+      animation: goyang 0.5s infinite alternate;
+    }
+
+    @keyframes goyang{
       from{
-        transform:scale(1) rotate(-2deg);
+        transform: rotate(-15deg) scale(1);
       }
       to{
-        transform:scale(1.1) rotate(2deg);
+        transform: rotate(15deg) scale(1.2);
       }
     }
   </style>
@@ -36,7 +40,7 @@
 <body>
 
   <div class="text">
-    Yahh kosong 😆
+    Yahh kosong <span class="emoji">😆</span>
   </div>
 
 </body>
