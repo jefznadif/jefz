@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Jefz - Login</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/login.css"/>
+</head>
+<body>
+<!-- ===== GLOBAL ANIMATED BACKGROUND ===== -->
+<div id="globalBg"></div>
+<!-- ===== LOGIN PAGE ===== -->
+<div class="login-container">
+  <div class="login-bg">
+    <div class="orb orb1"></div>
+    <div class="orb orb2"></div>
+    <div class="orb orb3"></div>
+  </div>
+  <div class="login-wrap">
+    <div class="login-logo">♡</div>
+    <h1 class="login-title">Jef'zNdfaa</h1>
+    <p class="login-sub">Pilih akun untuk masuk</p>
+    <div id="stepAccount">
+      <div class="account-list">
+        <button class="account-card" onclick="selectAccount('Jef\'z','admin')">
+          <div class="acc-avatar jefz">J</div>
+          <div class="acc-info">
+            <span class="acc-name">Jef'z</span>
+            <span class="acc-role">Admin</span>
+          </div>
+          <span class="acc-arrow">›</span>
+        </button>
+        <button class="account-card" onclick="selectAccount('Ndifaa','user')">
+          <div class="acc-avatar ndifaa">N</div>
+          <div class="acc-info">
+            <span class="acc-name">Ndifaa</span>
+            <span class="acc-role">User</span>
+          </div>
+          <span class="acc-arrow">›</span>
+        </button>
+      </div>
+    </div>
+    <div id="stepPin" style="display:none">
+      <div class="back-row">
+        <button class="back-btn" onclick="backToAccount()">← Kembali</button>
+      </div>
+      <div class="selected-acc-info" id="selectedAccInfo"></div>
+      <div class="pin-field-wrap">
+        <input type="password" id="pinInput" class="pin-input" placeholder="Masukkan PIN" autocomplete="off"/>
+        <button class="pin-submit" onclick="doLogin()">→</button>
+      </div>
+      <div id="loginErr" class="login-err"></div>
+    </div>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/supabase-config.js"></script>
+<script src="js/auth.js"></script>
+</body>
+</html>
